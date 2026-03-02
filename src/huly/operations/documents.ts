@@ -21,21 +21,29 @@ import { Effect } from "effect"
 
 import type {
   CreateDocumentParams,
+  CreateTeamspaceParams,
   DeleteDocumentParams,
+  DeleteTeamspaceParams,
   Document,
   DocumentSummary,
   GetDocumentParams,
+  GetTeamspaceParams,
   ListDocumentsParams,
   ListDocumentsResult,
   ListTeamspacesParams,
   ListTeamspacesResult,
   TeamspaceSummary,
-  UpdateDocumentParams
+  UpdateDocumentParams,
+  UpdateTeamspaceParams
 } from "../../domain/schemas.js"
 import type {
   CreateDocumentResult,
+  CreateTeamspaceResult,
   DeleteDocumentResult,
-  UpdateDocumentResult
+  DeleteTeamspaceResult,
+  GetTeamspaceResult,
+  UpdateDocumentResult,
+  UpdateTeamspaceResult
 } from "../../domain/schemas/documents.js"
 import { DocumentId, TeamspaceId } from "../../domain/schemas/shared.js"
 import { HulyClient, type HulyClientError } from "../client.js"
@@ -43,9 +51,23 @@ import { DocumentNotFoundError, TeamspaceNotFoundError } from "../errors.js"
 import { escapeLikeWildcards } from "./query-helpers.js"
 import { clampLimit, findByNameOrId, toRef } from "./shared.js"
 
-import { documentPlugin } from "../huly-plugins.js"
+import { core, documentPlugin } from "../huly-plugins.js"
 
 type ListTeamspacesError = HulyClientError
+
+type GetTeamspaceError =
+  | HulyClientError
+  | TeamspaceNotFoundError
+
+type CreateTeamspaceError = HulyClientError
+
+type UpdateTeamspaceError =
+  | HulyClientError
+  | TeamspaceNotFoundError
+
+type DeleteTeamspaceError =
+  | HulyClientError
+  | TeamspaceNotFoundError
 
 type ListDocumentsError =
   | HulyClientError
@@ -74,9 +96,11 @@ type DeleteDocumentError =
 
 /**
  * Find a teamspace by name or ID.
+ * By default only finds non-archived teamspaces. Pass includeArchived to find any.
  */
 const findTeamspace = (
-  identifier: string
+  identifier: string,
+  opts?: { includeArchived?: boolean }
 ): Effect.Effect<
   { client: HulyClient["Type"]; teamspace: HulyTeamspace },
   TeamspaceNotFoundError | HulyClientError,
@@ -85,11 +109,18 @@ const findTeamspace = (
   Effect.gen(function*() {
     const client = yield* HulyClient
 
+    const nameQuery: DocumentQuery<HulyTeamspace> = { name: identifier }
+    const idQuery: DocumentQuery<HulyTeamspace> = { _id: toRef<HulyTeamspace>(identifier) }
+    if (!opts?.includeArchived) {
+      nameQuery.archived = false
+      idQuery.archived = false
+    }
+
     const teamspace = yield* findByNameOrId(
       client,
       documentPlugin.class.Teamspace,
-      { name: identifier, archived: false },
-      { _id: toRef<HulyTeamspace>(identifier) }
+      nameQuery,
+      idQuery
     )
 
     if (teamspace === undefined) {
@@ -173,6 +204,128 @@ export const listTeamspaces = (
       teamspaces: summaries,
       total
     }
+  })
+
+// --- Teamspace CRUD Operations ---
+
+export const getTeamspace = (
+  params: GetTeamspaceParams
+): Effect.Effect<GetTeamspaceResult, GetTeamspaceError, HulyClient> =>
+  Effect.gen(function*() {
+    const { client, teamspace } = yield* findTeamspace(params.teamspace, { includeArchived: true })
+
+    const docs = yield* client.findAll<HulyDocument>(
+      documentPlugin.class.Document,
+      { space: teamspace._id },
+      { limit: 1, total: true }
+    )
+
+    return {
+      id: TeamspaceId.make(teamspace._id),
+      name: teamspace.name,
+      description: teamspace.description || undefined,
+      archived: teamspace.archived,
+      private: teamspace.private,
+      documents: docs.total
+    }
+  })
+
+export const createTeamspace = (
+  params: CreateTeamspaceParams
+): Effect.Effect<CreateTeamspaceResult, CreateTeamspaceError, HulyClient> =>
+  Effect.gen(function*() {
+    const client = yield* HulyClient
+
+    const existing = yield* client.findOne<HulyTeamspace>(
+      documentPlugin.class.Teamspace,
+      { name: params.name, archived: false }
+    )
+
+    if (existing !== undefined) {
+      return {
+        id: TeamspaceId.make(existing._id),
+        name: existing.name,
+        created: false
+      }
+    }
+
+    const teamspaceId: Ref<HulyTeamspace> = generateId()
+
+    const teamspaceData: Data<HulyTeamspace> = {
+      name: params.name,
+      description: params.description ?? "",
+      private: params.private ?? false,
+      archived: false,
+      // Huly auto-adds creator as member/owner — empty array is safe.
+      // Confirmed via integration test: teamspace visible in list/get after create.
+      members: [],
+      icon: documentPlugin.icon.Teamspace,
+      type: documentPlugin.spaceType.DefaultTeamspaceType
+    }
+
+    // Teamspaces are top-level spaces — use core.space.Space as parent,
+    // matching the official Huly platform-api example (teamspace-create.ts).
+    yield* client.createDoc(
+      documentPlugin.class.Teamspace,
+      core.space.Space,
+      teamspaceData,
+      teamspaceId
+    )
+
+    return {
+      id: TeamspaceId.make(teamspaceId),
+      name: params.name,
+      created: true
+    }
+  })
+
+export const updateTeamspace = (
+  params: UpdateTeamspaceParams
+): Effect.Effect<UpdateTeamspaceResult, UpdateTeamspaceError, HulyClient> =>
+  Effect.gen(function*() {
+    const { client, teamspace } = yield* findTeamspace(params.teamspace, { includeArchived: true })
+
+    const updateOps: DocumentUpdate<HulyTeamspace> = {}
+
+    if (params.name !== undefined) {
+      updateOps.name = params.name
+    }
+
+    if (params.description !== undefined) {
+      updateOps.description = params.description === null ? "" : params.description
+    }
+
+    if (params.archived !== undefined) {
+      updateOps.archived = params.archived
+    }
+
+    if (Object.keys(updateOps).length === 0) {
+      return { id: TeamspaceId.make(teamspace._id), updated: false }
+    }
+
+    yield* client.updateDoc(
+      documentPlugin.class.Teamspace,
+      core.space.Space,
+      teamspace._id,
+      updateOps
+    )
+
+    return { id: TeamspaceId.make(teamspace._id), updated: true }
+  })
+
+export const deleteTeamspace = (
+  params: DeleteTeamspaceParams
+): Effect.Effect<DeleteTeamspaceResult, DeleteTeamspaceError, HulyClient> =>
+  Effect.gen(function*() {
+    const { client, teamspace } = yield* findTeamspace(params.teamspace, { includeArchived: true })
+
+    yield* client.removeDoc(
+      documentPlugin.class.Teamspace,
+      core.space.Space,
+      teamspace._id
+    )
+
+    return { id: TeamspaceId.make(teamspace._id), deleted: true }
   })
 
 /**

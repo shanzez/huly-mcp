@@ -141,7 +141,94 @@ export const DeleteDocumentParamsSchema = Schema.Struct({
 
 export type DeleteDocumentParams = Schema.Schema.Type<typeof DeleteDocumentParamsSchema>
 
+// --- Teamspace CRUD Schemas ---
+
+export const GetTeamspaceParamsSchema = Schema.Struct({
+  teamspace: TeamspaceIdentifier.annotations({
+    description: "Teamspace name or ID"
+  })
+}).annotations({
+  title: "GetTeamspaceParams",
+  description: "Parameters for getting a single teamspace"
+})
+
+export type GetTeamspaceParams = Schema.Schema.Type<typeof GetTeamspaceParamsSchema>
+
+export const CreateTeamspaceParamsSchema = Schema.Struct({
+  name: NonEmptyString.annotations({
+    description: "Teamspace name"
+  }),
+  description: Schema.optional(Schema.String.annotations({
+    description: "Teamspace description"
+  })),
+  private: Schema.optional(Schema.Boolean.annotations({
+    description: "Whether the teamspace is private (default: false)"
+  }))
+}).annotations({
+  title: "CreateTeamspaceParams",
+  description: "Parameters for creating a teamspace"
+})
+
+export type CreateTeamspaceParams = Schema.Schema.Type<typeof CreateTeamspaceParamsSchema>
+
+export const UpdateTeamspaceParamsSchema = Schema.Struct({
+  teamspace: TeamspaceIdentifier.annotations({
+    description: "Teamspace name or ID"
+  }),
+  name: Schema.optional(NonEmptyString.annotations({
+    description: "New teamspace name"
+  })),
+  description: Schema.optional(
+    Schema.NullOr(Schema.String).annotations({ description: "New description (null to clear)" })
+  ),
+  archived: Schema.optional(Schema.Boolean.annotations({
+    description: "Set archived status"
+  }))
+}).annotations({
+  title: "UpdateTeamspaceParams",
+  description: "Parameters for updating a teamspace"
+})
+
+export type UpdateTeamspaceParams = Schema.Schema.Type<typeof UpdateTeamspaceParamsSchema>
+
+export const DeleteTeamspaceParamsSchema = Schema.Struct({
+  teamspace: TeamspaceIdentifier.annotations({
+    description: "Teamspace name or ID"
+  })
+}).annotations({
+  title: "DeleteTeamspaceParams",
+  description: "Parameters for deleting a teamspace"
+})
+
+export type DeleteTeamspaceParams = Schema.Schema.Type<typeof DeleteTeamspaceParamsSchema>
+
+export interface GetTeamspaceResult extends TeamspaceSummary {
+  readonly documents: number
+}
+
+export interface CreateTeamspaceResult {
+  readonly id: TeamspaceId
+  readonly name: string
+  readonly created: boolean
+}
+
+export interface UpdateTeamspaceResult {
+  readonly id: TeamspaceId
+  readonly updated: boolean
+}
+
+export interface DeleteTeamspaceResult {
+  readonly id: TeamspaceId
+  readonly deleted: boolean
+}
+
+// --- JSON Schemas & Parsers ---
+
 export const listTeamspacesParamsJsonSchema = JSONSchema.make(ListTeamspacesParamsSchema)
+export const getTeamspaceParamsJsonSchema = JSONSchema.make(GetTeamspaceParamsSchema)
+export const createTeamspaceParamsJsonSchema = JSONSchema.make(CreateTeamspaceParamsSchema)
+export const updateTeamspaceParamsJsonSchema = JSONSchema.make(UpdateTeamspaceParamsSchema)
+export const deleteTeamspaceParamsJsonSchema = JSONSchema.make(DeleteTeamspaceParamsSchema)
 export const listDocumentsParamsJsonSchema = JSONSchema.make(ListDocumentsParamsSchema)
 export const getDocumentParamsJsonSchema = JSONSchema.make(GetDocumentParamsSchema)
 export const createDocumentParamsJsonSchema = JSONSchema.make(CreateDocumentParamsSchema)
@@ -149,6 +236,10 @@ export const updateDocumentParamsJsonSchema = JSONSchema.make(UpdateDocumentPara
 export const deleteDocumentParamsJsonSchema = JSONSchema.make(DeleteDocumentParamsSchema)
 
 export const parseListTeamspacesParams = Schema.decodeUnknown(ListTeamspacesParamsSchema)
+export const parseGetTeamspaceParams = Schema.decodeUnknown(GetTeamspaceParamsSchema)
+export const parseCreateTeamspaceParams = Schema.decodeUnknown(CreateTeamspaceParamsSchema)
+export const parseUpdateTeamspaceParams = Schema.decodeUnknown(UpdateTeamspaceParamsSchema)
+export const parseDeleteTeamspaceParams = Schema.decodeUnknown(DeleteTeamspaceParamsSchema)
 export const parseListDocumentsParams = Schema.decodeUnknown(ListDocumentsParamsSchema)
 export const parseGetDocumentParams = Schema.decodeUnknown(GetDocumentParamsSchema)
 export const parseCreateDocumentParams = Schema.decodeUnknown(CreateDocumentParamsSchema)
