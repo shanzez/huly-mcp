@@ -383,6 +383,19 @@ describe("updateTestResult", () => {
       expect(result.updated).toBe(true)
       expect(cap.operations?.status).toBe(TestRunStatus.Passed)
     }))
+
+  it.effect("unassigns when assignee is null", () =>
+    Effect.gen(function*() {
+      const cap: MockConfig["captureUpdateDoc"] = {}
+      const r = makeResult("r-1", "tc-1")
+      const result = yield* updateTestResult({
+        project: testProjectIdentifier("QA Project"),
+        result: testResultIdentifier("r-1"),
+        assignee: null
+      }).pipe(Effect.provide(buildLayer({ results: [r], captureUpdateDoc: cap })))
+      expect(result.updated).toBe(true)
+      expect(cap.operations?.$unset).toEqual({ assignee: "" })
+    }))
 })
 
 describe("deleteTestResult", () => {

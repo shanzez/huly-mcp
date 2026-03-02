@@ -89,19 +89,12 @@ const toProjectSummary = (p: TestProject): TestProjectSummary => {
   return result
 }
 
-const toSuiteSummary = (s: TestSuite): TestSuiteSummary => {
-  const result: TestSuiteSummary = {
-    id: TestSuiteId.make(s._id),
-    name: s.name
-  }
-  if (s.description !== undefined) {
-    return { ...result, description: s.description, ...(s.parent ? { parent: s.parent } : {}) }
-  }
-  if (s.parent) {
-    return { ...result, parent: s.parent }
-  }
-  return result
-}
+const toSuiteSummary = (s: TestSuite): TestSuiteSummary => ({
+  id: TestSuiteId.make(s._id),
+  name: s.name,
+  ...(s.description !== undefined ? { description: s.description } : {}),
+  ...(s.parent ? { parent: s.parent } : {})
+})
 
 const toCaseSummary = (tc: TestCase): TestCaseSummary => {
   const result: TestCaseSummary = {
