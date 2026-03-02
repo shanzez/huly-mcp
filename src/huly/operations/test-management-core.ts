@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- test suite + test case CRUD with markup handling form a single domain */
 import type { Employee } from "@hcengineering/contact"
 import type {
   AttachedData,
@@ -345,9 +346,20 @@ export const getTestCase = (
     const project = yield* findTestProject(client, params.project)
     const tc = yield* findTestCase(client, project, params.testCase)
 
+    let descriptionStr: string | undefined
+    if (tc.description !== null) {
+      descriptionStr = yield* client.fetchMarkup(
+        testManagement.class.TestCase,
+        tc._id,
+        "description",
+        tc.description,
+        "markdown"
+      )
+    }
+
     return {
       ...toCaseSummary(tc),
-      ...(tc.description ? { description: tc.description } : {}),
+      ...(descriptionStr !== undefined ? { description: descriptionStr } : {}),
       ...(tc.attachedTo ? { suite: tc.attachedTo } : {})
     }
   })
@@ -433,7 +445,17 @@ export const updateTestCase = (
       ops.name = params.name
     }
     if (params.description !== undefined) {
-      ops.description = params.description === null ? null : params.description
+      if (params.description === null) {
+        ops.description = null
+      } else {
+        ops.description = yield* client.uploadMarkup(
+          testManagement.class.TestCase,
+          tc._id,
+          "description",
+          params.description,
+          "markdown"
+        )
+      }
     }
     if (params.type !== undefined) {
       const typeEnum = stringToTestCaseType(params.type)
