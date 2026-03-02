@@ -260,7 +260,11 @@ export const updateTestSuite = (
       updateOps.name = params.name
     }
     if (params.description !== undefined) {
-      updateOps.description = params.description ?? ""
+      if (params.description === null) {
+        updateOps.$unset = { ...updateOps.$unset, description: "" }
+      } else {
+        updateOps.description = params.description
+      }
     }
 
     if (Object.keys(updateOps).length === 0) {
@@ -470,9 +474,7 @@ export const updateTestCase = (
       if (params.assignee === null) {
         ops.assignee = null
       } else {
-        const person = yield* resolveAssignee(params.assignee).pipe(
-          Effect.provideService(HulyClient, client)
-        )
+        const person = yield* resolveAssignee(params.assignee)
         ops.assignee = toRef<Employee>(person._id)
       }
     }

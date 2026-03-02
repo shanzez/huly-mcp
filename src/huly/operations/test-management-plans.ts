@@ -173,7 +173,10 @@ export const addTestPlanItem = (
     const project = yield* findTestProject(client, params.project)
     const plan = yield* findTestPlan(client, project, params.plan)
     const tc = yield* findTestCase(client, project, params.testCase)
-    const itemAttrs: Record<string, unknown> = { testCase: tc._id }
+    const itemAttrs: Record<string, unknown> = {
+      testCase: tc._id,
+      ...(tc.attachedTo ? { testSuite: tc.attachedTo } : {})
+    }
     if (params.assignee !== undefined) {
       itemAttrs.assignee = toRef<Employee>((yield* resolveAssignee(params.assignee))._id)
     }

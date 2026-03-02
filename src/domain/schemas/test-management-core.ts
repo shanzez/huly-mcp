@@ -354,7 +354,7 @@ export interface ListTestSuitesResult {
 }
 
 export interface GetTestSuiteResult extends TestSuiteSummary {
-  readonly testCases?: number
+  readonly testCases: number
 }
 
 export interface CreateTestSuiteResult {
