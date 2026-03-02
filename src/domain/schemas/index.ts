@@ -15,15 +15,35 @@ export {
 } from "./shared.js"
 
 export {
+  type CreateProjectParams,
+  createProjectParamsJsonSchema,
+  CreateProjectParamsSchema,
+  type CreateProjectResult,
+  type DeleteProjectParams,
+  deleteProjectParamsJsonSchema,
+  DeleteProjectParamsSchema,
+  type DeleteProjectResult,
+  type GetProjectParams,
+  getProjectParamsJsonSchema,
+  GetProjectParamsSchema,
+  type GetProjectResult,
   type ListProjectsParams,
   listProjectsParamsJsonSchema,
   ListProjectsParamsSchema,
   type ListProjectsResult,
+  parseCreateProjectParams,
+  parseDeleteProjectParams,
+  parseGetProjectParams,
   parseListProjectsParams,
   parseProject,
+  parseUpdateProjectParams,
   type Project,
   ProjectSchema,
-  type ProjectSummary
+  type ProjectSummary,
+  type UpdateProjectParams,
+  updateProjectParamsJsonSchema,
+  UpdateProjectParamsSchema,
+  type UpdateProjectResult
 } from "./projects.js"
 
 export {

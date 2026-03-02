@@ -1,16 +1,26 @@
 import { describe, it } from "@effect/vitest"
-import { type PersonId, type Ref, SortingOrder, type Space, toFindResult } from "@hcengineering/core"
-import { type Project as HulyProject } from "@hcengineering/tracker"
+import type { Doc, PersonId, Ref, Space, Status } from "@hcengineering/core"
+import { SortingOrder, toFindResult } from "@hcengineering/core"
+import type { ProjectType } from "@hcengineering/task"
+import type { Project as HulyProject } from "@hcengineering/tracker"
 import { Effect } from "effect"
 import { expect } from "vitest"
 import { HulyClient, type HulyClientOperations } from "../../../src/huly/client.js"
-import { listProjects } from "../../../src/huly/operations/projects.js"
-
-import { tracker } from "../../../src/huly/huly-plugins.js"
+import type { ProjectNotFoundError } from "../../../src/huly/errors.js"
+import { core, task, tracker } from "../../../src/huly/huly-plugins.js"
+import {
+  createProject,
+  deleteProject,
+  getProject,
+  listProjects,
+  updateProject
+} from "../../../src/huly/operations/projects.js"
+import { projectIdentifier } from "../../helpers/brands.js"
 
 // --- Mock Data Builders ---
 
 const asProject = (v: unknown) => v as HulyProject
+const asProjectType = (v: unknown) => v as ProjectType
 
 const makeProject = (overrides?: Partial<HulyProject>): HulyProject => {
   const result = asProject({
@@ -38,10 +48,16 @@ const makeProject = (overrides?: Partial<HulyProject>): HulyProject => {
 interface MockConfig {
   projects?: Array<HulyProject>
   captureQuery?: { query?: Record<string, unknown>; options?: Record<string, unknown> }
+  captureCreateDoc?: { attributes?: Record<string, unknown>; id?: string }
+  captureUpdateDoc?: { operations?: Record<string, unknown> }
+  captureRemoveDoc?: { called?: boolean }
+  statuses?: Array<{ _id: Ref<Status>; name: string; category?: string }>
+  projectType?: ProjectType
 }
 
 const createTestLayerWithMocks = (config: MockConfig) => {
   const projects = config.projects ?? []
+  const statuses = config.statuses ?? []
 
   const findAllImpl: HulyClientOperations["findAll"] = ((_class: unknown, query: unknown, options: unknown) => {
     if (_class === tracker.class.Project) {
@@ -50,28 +66,85 @@ const createTestLayerWithMocks = (config: MockConfig) => {
         config.captureQuery.options = options as Record<string, unknown>
       }
 
-      // Filter by archived if specified in query
       const q = query as Record<string, unknown>
       let filtered = projects
       if (q.archived !== undefined) {
         filtered = projects.filter(p => p.archived === q.archived)
       }
 
-      // Apply limit
       const opts = options as { limit?: number } | undefined
       const limit = opts?.limit ?? filtered.length
       const limited = filtered.slice(0, limit)
 
-      // Return with total
       const result = toFindResult(limited)
       ;(result as { total?: number }).total = filtered.length
       return Effect.succeed(result)
     }
+    if (_class === core.class.Status) {
+      // Status mock objects only need _id, name, and category for our tests.
+      // toFindResult expects Doc[], but mock statuses are partial — cast is safe in tests.
+      return Effect.succeed(toFindResult(statuses as Array<never>))
+    }
     return Effect.succeed(toFindResult([]))
   }) as HulyClientOperations["findAll"]
 
+  const findOneImpl: HulyClientOperations["findOne"] = ((_class: unknown, query: unknown, options?: unknown) => {
+    if (_class === tracker.class.Project) {
+      const q = query as Record<string, unknown>
+      const found = projects.find(p => {
+        if (q.identifier) return p.identifier === q.identifier
+        if (q._id) return p._id === q._id
+        return false
+      })
+      if (found && options) {
+        const opts = options as { lookup?: Record<string, unknown> }
+        if (opts.lookup?.type === task.class.ProjectType && config.projectType) {
+          const withLookup = { ...found, $lookup: { type: config.projectType } }
+          return Effect.succeed(withLookup)
+        }
+      }
+      return Effect.succeed(found)
+    }
+    return Effect.succeed(undefined)
+  }) as HulyClientOperations["findOne"]
+
+  const createDocImpl: HulyClientOperations["createDoc"] = ((
+    _class: unknown,
+    _space: unknown,
+    attributes: unknown,
+    id?: unknown
+  ) => {
+    if (config.captureCreateDoc) {
+      config.captureCreateDoc.attributes = attributes as Record<string, unknown>
+      config.captureCreateDoc.id = id as string
+    }
+    return Effect.succeed((id ?? "new-project-id") as Ref<Doc>)
+  }) as HulyClientOperations["createDoc"]
+
+  const updateDocImpl: HulyClientOperations["updateDoc"] = (
+    (_class: unknown, _space: unknown, _objectId: unknown, operations: unknown) => {
+      if (config.captureUpdateDoc) {
+        config.captureUpdateDoc.operations = operations as Record<string, unknown>
+      }
+      return Effect.succeed({} as never)
+    }
+  ) as HulyClientOperations["updateDoc"]
+
+  const removeDocImpl: HulyClientOperations["removeDoc"] = (
+    (_class: unknown, _space: unknown, _objectId: unknown) => {
+      if (config.captureRemoveDoc) {
+        config.captureRemoveDoc.called = true
+      }
+      return Effect.succeed({} as never)
+    }
+  ) as HulyClientOperations["removeDoc"]
+
   return HulyClient.testLayer({
-    findAll: findAllImpl
+    findAll: findAllImpl,
+    findOne: findOneImpl,
+    createDoc: createDocImpl,
+    updateDoc: updateDocImpl,
+    removeDoc: removeDocImpl
   })
 }
 
@@ -275,4 +348,262 @@ describe("listProjects", () => {
         expect(result.total).toBe(3)
       }))
   })
+})
+
+describe("getProject", () => {
+  it.effect("returns project with statuses", () =>
+    Effect.gen(function*() {
+      const defaultStatusId = "status-1" as Ref<Status>
+      const proj = makeProject({
+        identifier: "HULY",
+        name: "Huly",
+        description: "Main project",
+        defaultIssueStatus: defaultStatusId
+      })
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [proj],
+        statuses: [
+          { _id: defaultStatusId, name: "Backlog" },
+          { _id: "status-2" as Ref<Status>, name: "In Progress" }
+        ],
+        projectType: asProjectType({
+          statuses: [
+            { _id: defaultStatusId },
+            { _id: "status-2" as Ref<Status> }
+          ]
+        })
+      })
+
+      const result = yield* getProject({
+        project: projectIdentifier("HULY")
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.identifier).toBe("HULY")
+      expect(result.name).toBe("Huly")
+      expect(result.description).toBe("Main project")
+      expect(result.defaultStatus).toBe("Backlog")
+      expect(result.statuses).toEqual(["Backlog", "In Progress"])
+    }))
+
+  it.effect("returns ProjectNotFoundError for nonexistent project", () =>
+    Effect.gen(function*() {
+      const testLayer = createTestLayerWithMocks({ projects: [] })
+
+      const error = yield* Effect.flip(
+        getProject({
+          project: projectIdentifier("NOPE")
+        }).pipe(Effect.provide(testLayer))
+      )
+
+      expect(error._tag).toBe("ProjectNotFoundError")
+      expect((error as ProjectNotFoundError).identifier).toBe("NOPE")
+    }))
+})
+
+describe("createProject", () => {
+  it.effect("creates new project", () =>
+    Effect.gen(function*() {
+      const captureCreateDoc: MockConfig["captureCreateDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [],
+        captureCreateDoc
+      })
+
+      const result = yield* createProject({
+        name: "My Project",
+        identifier: "MYPRJ"
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.identifier).toBe("MYPRJ")
+      expect(result.name).toBe("My Project")
+      expect(result.created).toBe(true)
+      expect(captureCreateDoc.attributes?.name).toBe("My Project")
+      expect(captureCreateDoc.attributes?.identifier).toBe("MYPRJ")
+      expect(captureCreateDoc.attributes?.private).toBe(false)
+    }))
+
+  it.effect("returns existing project if identifier matches (idempotent)", () =>
+    Effect.gen(function*() {
+      const existing = makeProject({
+        _id: "existing-1" as Ref<HulyProject>,
+        identifier: "EXIST",
+        name: "Existing"
+      })
+      const captureCreateDoc: MockConfig["captureCreateDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [existing],
+        captureCreateDoc
+      })
+
+      const result = yield* createProject({
+        name: "Existing",
+        identifier: "EXIST"
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.identifier).toBe("EXIST")
+      expect(result.name).toBe("Existing")
+      expect(result.created).toBe(false)
+      expect(captureCreateDoc.attributes).toBeUndefined()
+    }))
+
+  it.effect("creates with private flag", () =>
+    Effect.gen(function*() {
+      const captureCreateDoc: MockConfig["captureCreateDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [],
+        captureCreateDoc
+      })
+
+      const result = yield* createProject({
+        name: "Secret",
+        identifier: "SEC",
+        private: true
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.created).toBe(true)
+      expect(captureCreateDoc.attributes?.private).toBe(true)
+    }))
+
+  it.effect("creates with description", () =>
+    Effect.gen(function*() {
+      const captureCreateDoc: MockConfig["captureCreateDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [],
+        captureCreateDoc
+      })
+
+      yield* createProject({
+        name: "Described",
+        identifier: "DESC",
+        description: "A nice project"
+      }).pipe(Effect.provide(testLayer))
+
+      expect(captureCreateDoc.attributes?.description).toBe("A nice project")
+    }))
+})
+
+describe("updateProject", () => {
+  it.effect("updates name", () =>
+    Effect.gen(function*() {
+      const proj = makeProject({ identifier: "UPD", name: "Old Name" })
+      const captureUpdateDoc: MockConfig["captureUpdateDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [proj],
+        captureUpdateDoc
+      })
+
+      const result = yield* updateProject({
+        project: projectIdentifier("UPD"),
+        name: "New Name"
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.updated).toBe(true)
+      expect(captureUpdateDoc.operations?.name).toBe("New Name")
+    }))
+
+  it.effect("updates description", () =>
+    Effect.gen(function*() {
+      const proj = makeProject({ identifier: "UPD" })
+      const captureUpdateDoc: MockConfig["captureUpdateDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [proj],
+        captureUpdateDoc
+      })
+
+      const result = yield* updateProject({
+        project: projectIdentifier("UPD"),
+        description: "Updated desc"
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.updated).toBe(true)
+      expect(captureUpdateDoc.operations?.description).toBe("Updated desc")
+    }))
+
+  it.effect("clears description with null", () =>
+    Effect.gen(function*() {
+      const proj = makeProject({ identifier: "UPD", description: "has desc" })
+      const captureUpdateDoc: MockConfig["captureUpdateDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [proj],
+        captureUpdateDoc
+      })
+
+      const result = yield* updateProject({
+        project: projectIdentifier("UPD"),
+        description: null
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.updated).toBe(true)
+      expect(captureUpdateDoc.operations?.description).toBe("")
+    }))
+
+  it.effect("returns updated=false when no fields provided", () =>
+    Effect.gen(function*() {
+      const proj = makeProject({ identifier: "UPD" })
+
+      const testLayer = createTestLayerWithMocks({ projects: [proj] })
+
+      const result = yield* updateProject({
+        project: projectIdentifier("UPD")
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.updated).toBe(false)
+    }))
+
+  it.effect("returns ProjectNotFoundError for nonexistent project", () =>
+    Effect.gen(function*() {
+      const testLayer = createTestLayerWithMocks({ projects: [] })
+
+      const error = yield* Effect.flip(
+        updateProject({
+          project: projectIdentifier("NOPE"),
+          name: "new"
+        }).pipe(Effect.provide(testLayer))
+      )
+
+      expect(error._tag).toBe("ProjectNotFoundError")
+      expect((error as ProjectNotFoundError).identifier).toBe("NOPE")
+    }))
+})
+
+describe("deleteProject", () => {
+  it.effect("deletes project by identifier", () =>
+    Effect.gen(function*() {
+      const proj = makeProject({ _id: "p-1" as Ref<HulyProject>, identifier: "DEL" })
+      const captureRemoveDoc: MockConfig["captureRemoveDoc"] = {}
+
+      const testLayer = createTestLayerWithMocks({
+        projects: [proj],
+        captureRemoveDoc
+      })
+
+      const result = yield* deleteProject({
+        project: projectIdentifier("DEL")
+      }).pipe(Effect.provide(testLayer))
+
+      expect(result.identifier).toBe("DEL")
+      expect(result.deleted).toBe(true)
+      expect(captureRemoveDoc.called).toBe(true)
+    }))
+
+  it.effect("returns ProjectNotFoundError for nonexistent project", () =>
+    Effect.gen(function*() {
+      const testLayer = createTestLayerWithMocks({ projects: [] })
+
+      const error = yield* Effect.flip(
+        deleteProject({
+          project: projectIdentifier("NOPE")
+        }).pipe(Effect.provide(testLayer))
+      )
+
+      expect(error._tag).toBe("ProjectNotFoundError")
+    }))
 })
