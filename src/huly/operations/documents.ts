@@ -256,9 +256,8 @@ export const createTeamspace = (
       description: params.description ?? "",
       private: params.private ?? false,
       archived: false,
-      // Huly auto-adds creator as member/owner — empty array is safe.
-      // Confirmed via integration test: teamspace visible in list/get after create.
-      members: [],
+      members: [client.getAccountUuid()],
+      owners: [client.getAccountUuid()],
       icon: documentPlugin.icon.Teamspace,
       type: documentPlugin.spaceType.DefaultTeamspaceType
     }

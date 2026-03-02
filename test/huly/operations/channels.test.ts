@@ -561,7 +561,7 @@ describe("createChannel", () => {
       expect(captureCreateDoc.attributes?.name).toBe("new-channel")
       expect(captureCreateDoc.attributes?.private).toBe(false)
       expect(captureCreateDoc.attributes?.archived).toBe(false)
-      expect(captureCreateDoc.attributes?.members).toEqual([])
+      expect(captureCreateDoc.attributes?.members).toEqual(["test-account-uuid"])
     }))
 
   // test-revizorro: approved

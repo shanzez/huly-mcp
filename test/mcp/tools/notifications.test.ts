@@ -1,5 +1,5 @@
 import { describe, it } from "@effect/vitest"
-import type { FindResult } from "@hcengineering/core"
+import type { AccountUuid, FindResult } from "@hcengineering/core"
 import { toFindResult } from "@hcengineering/core"
 import { Effect } from "effect"
 import { expect } from "vitest"
@@ -9,6 +9,7 @@ import type { HulyStorageOperations } from "../../../src/huly/storage.js"
 import { notificationTools } from "../../../src/mcp/tools/notifications.js"
 
 const noopHulyClient: HulyClientOperations = {
+  getAccountUuid: () => "test-account-uuid" as AccountUuid,
   findAll: () => Effect.succeed(toFindResult([])) as Effect.Effect<FindResult<never>>,
   findOne: () => Effect.succeed(undefined),
   createDoc: () => Effect.die(new Error("not implemented")),

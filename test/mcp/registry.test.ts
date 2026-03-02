@@ -1,5 +1,5 @@
 import { describe, it } from "@effect/vitest"
-import type { FindResult } from "@hcengineering/core"
+import type { AccountUuid, FindResult } from "@hcengineering/core"
 import { toFindResult } from "@hcengineering/core"
 import { Effect, Schema } from "effect"
 import { expect } from "vitest"
@@ -26,6 +26,7 @@ type Params = typeof Params.Type
 const parse = (input: unknown) => Schema.decodeUnknown(Params)(input)
 
 const noopHulyClient: HulyClientOperations = {
+  getAccountUuid: () => "test-account-uuid" as AccountUuid,
   findAll: () => Effect.succeed(toFindResult([])) as Effect.Effect<FindResult<never>>,
   findOne: () => Effect.succeed(undefined),
   createDoc: () => Effect.die(new Error("not implemented")),

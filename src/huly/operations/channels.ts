@@ -302,7 +302,8 @@ export const createChannel = (
       description: "",
       private: params.private ?? false,
       archived: false,
-      members: []
+      members: [client.getAccountUuid()],
+      owners: [client.getAccountUuid()]
     }
 
     yield* client.createDoc(

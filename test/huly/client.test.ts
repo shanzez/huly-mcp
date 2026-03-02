@@ -53,6 +53,9 @@ const mockCollaboratorClient = {
 }
 
 vi.mock("@hcengineering/api-client", () => ({
+  createRestClient: vi.fn().mockImplementation(() => ({
+    getAccount: vi.fn().mockResolvedValue({ uuid: "test-account-uuid" })
+  })),
   createRestTxOperations: vi.fn().mockImplementation(() => Promise.resolve(mockTxOperations)),
   getWorkspaceToken: vi.fn().mockImplementation(() =>
     Promise.resolve({

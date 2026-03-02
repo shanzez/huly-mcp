@@ -10,6 +10,7 @@
  * @module
  */
 import {
+  createRestClient,
   createRestTxOperations,
   getWorkspaceToken,
   loadServerConfig,
@@ -18,6 +19,7 @@ import {
 } from "@hcengineering/api-client"
 import { getClient as getCollaboratorClient } from "@hcengineering/collaborator-client"
 import {
+  type AccountUuid,
   type AttachedData,
   type AttachedDoc,
   type Class,
@@ -89,6 +91,8 @@ function fromInternalMarkup(
 export type HulyClientError = ConnectionError
 
 export interface HulyClientOperations {
+  readonly getAccountUuid: () => AccountUuid
+
   readonly findAll: <T extends Doc>(
     _class: Ref<Class<T>>,
     query: DocumentQuery<T>,
@@ -170,7 +174,7 @@ export class HulyClient extends Context.Tag("@hulymcp/HulyClient")<
     Effect.gen(function*() {
       const config = yield* HulyConfigService
 
-      const { client, markupOps } = yield* connectRestWithRetry({
+      const { accountUuid, client, markupOps } = yield* connectRestWithRetry({
         url: config.url,
         auth: config.auth,
         workspace: config.workspace
@@ -190,6 +194,8 @@ export class HulyClient extends Context.Tag("@hulymcp/HulyClient")<
         })
 
       const operations: HulyClientOperations = {
+        getAccountUuid: () => accountUuid,
+
         findAll: <T extends Doc>(
           _class: Ref<Class<T>>,
           query: DocumentQuery<T>,
@@ -320,6 +326,7 @@ export class HulyClient extends Context.Tag("@hulymcp/HulyClient")<
     const noopFetchMarkup = (): Effect.Effect<string, HulyClientError> => Effect.succeed("")
 
     const defaultOps: HulyClientOperations = {
+      getAccountUuid: () => "test-account-uuid" as AccountUuid,
       findAll: noopFindAll,
       findOne: noopFindOne,
       createDoc: notImplemented("createDoc"),
@@ -361,6 +368,7 @@ interface MarkupOperations {
 
 interface RestConnection {
   client: TxOperations
+  accountUuid: AccountUuid
   markupOps: MarkupOperations
 }
 
@@ -406,6 +414,9 @@ const connectRest = async (
     serverConfig
   )
 
+  const restClient = createRestClient(endpoint, workspaceId, token)
+  const account = await restClient.getAccount()
+
   const client = await createRestTxOperations(endpoint, workspaceId, token)
   const markupOps = createMarkupOps(
     config.url,
@@ -414,7 +425,7 @@ const connectRest = async (
     serverConfig.COLLABORATOR_URL
   )
 
-  return { client, markupOps }
+  return { client, accountUuid: account.uuid, markupOps }
 }
 
 const connectRestWithRetry = (

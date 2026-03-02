@@ -1,4 +1,5 @@
 import { describe, it } from "@effect/vitest"
+import type { AccountUuid } from "@hcengineering/core"
 import { toFindResult } from "@hcengineering/core"
 import { Effect } from "effect"
 import { expect } from "vitest"
@@ -8,6 +9,7 @@ import type { HulyStorageOperations } from "../../src/huly/storage.js"
 import { toolRegistry } from "../../src/mcp/tools/index.js"
 
 const noopHulyClient: HulyClientOperations = {
+  getAccountUuid: () => "test-account-uuid" as AccountUuid,
   findAll: (() => Effect.succeed(toFindResult([]))) as HulyClientOperations["findAll"],
   findOne: (() => Effect.succeed(undefined)) as HulyClientOperations["findOne"],
   createDoc: () => Effect.die(new Error("not implemented")),
