@@ -1,5 +1,15 @@
 import type { Employee } from "@hcengineering/contact"
-import type { AttachedData, Class, Data, Doc, DocumentQuery, DocumentUpdate, Ref, Space } from "@hcengineering/core"
+import type {
+  AttachedData,
+  Class,
+  Data,
+  Doc,
+  DocumentQuery,
+  DocumentUpdate,
+  MarkupBlobRef,
+  Ref,
+  Space
+} from "@hcengineering/core"
 import { generateId, SortingOrder } from "@hcengineering/core"
 import { Effect } from "effect"
 
@@ -372,11 +382,22 @@ export const createTestCase = (
       ? stringToTestCaseStatus(params.status) ?? TestCaseStatus.Draft
       : TestCaseStatus.Draft
 
+    let descRef: MarkupBlobRef | null = null
+    if (params.description !== undefined && params.description.trim() !== "") {
+      descRef = yield* client.uploadMarkup(
+        testManagement.class.TestCase,
+        caseId,
+        "description",
+        params.description,
+        "markdown"
+      )
+    }
+
     // TestCase is an AttachedDoc; no typed constructor for AttachedData<TestCase>.
     // Build as Record and cast once — unavoidable at the SDK boundary.
     const attrs: Record<string, unknown> = {
       name: params.name,
-      description: null,
+      description: descRef,
       type: typeEnum,
       priority: priorityEnum,
       status: statusEnum,
