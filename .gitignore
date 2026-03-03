@@ -12,3 +12,4 @@ CLAUDE.local.md
 .huly-local/
 .env.local
 .claude/settings.local.json
+.pnpm-store/
