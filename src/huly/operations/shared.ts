@@ -8,8 +8,9 @@ import { Effect } from "effect"
 import type { IssuePriority as IssuePriorityStr } from "../../domain/schemas/issues.js"
 import { MAX_LIMIT, type NonNegativeNumber } from "../../domain/schemas/shared.js"
 import { PositiveNumber } from "../../domain/schemas/shared.js"
+import { normalizeForComparison } from "../../utils/normalize.js"
 import { HulyClient, type HulyClientError, type HulyClientOperations } from "../client.js"
-import { InvalidPersonUuidError, IssueNotFoundError, ProjectNotFoundError } from "../errors.js"
+import { InvalidPersonUuidError, InvalidStatusError, IssueNotFoundError, ProjectNotFoundError } from "../errors.js"
 import { contact, core, task, tracker } from "../huly-plugins.js"
 import { escapeLikeWildcards } from "./query-helpers.js"
 
@@ -338,3 +339,18 @@ export const findPersonByEmailOrName = (
     )
     return likePerson
   })
+
+export const resolveStatusByName = (
+  statuses: Array<StatusInfo>,
+  statusName: string,
+  project: string
+): Effect.Effect<Ref<Status>, InvalidStatusError> => {
+  const normalizedInput = normalizeForComparison(statusName)
+  const matchingStatus = statuses.find(
+    s => normalizeForComparison(s.name) === normalizedInput
+  )
+  if (matchingStatus === undefined) {
+    return Effect.fail(new InvalidStatusError({ status: statusName, project }))
+  }
+  return Effect.succeed(matchingStatus._id)
+}

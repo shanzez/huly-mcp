@@ -1,55 +1,49 @@
-/* eslint-disable max-lines -- calendar operations are cohesive; event CRUD + recurrence + instances form a single domain */
-import {
-  AccessLevel,
-  type Calendar as HulyCalendar,
-  type Event as HulyEvent,
-  generateEventId,
-  type ReccuringEvent as HulyRecurringEvent,
-  type ReccuringInstance as HulyRecurringInstance,
-  type RecurringRule as HulyRecurringRule,
-  type Visibility as HulyVisibility
-} from "@hcengineering/calendar"
-import type { Channel, Contact, Person } from "@hcengineering/contact"
-import {
-  type AttachedData,
-  type Class,
-  type Doc,
-  type DocumentQuery,
-  type DocumentUpdate,
-  type MarkupBlobRef,
-  type Ref,
-  SortingOrder,
-  type Space
-} from "@hcengineering/core"
+/**
+ * Calendar domain operations — one-time event CRUD + barrel re-export.
+ *
+ * Split into:
+ * - calendar-shared: shared helpers (SDK bridges, participant resolution, etc.)
+ * - calendar (this file): one-time event CRUD (list, get, create, update, delete)
+ * - calendar-recurring: recurring event ops (list, create, list instances)
+ *
+ * @module
+ */
+import { AccessLevel, type Event as HulyEvent, generateEventId } from "@hcengineering/calendar"
+import type { AttachedData, Class, Doc, DocumentQuery, DocumentUpdate, Space } from "@hcengineering/core"
+import { SortingOrder } from "@hcengineering/core"
 import { Effect } from "effect"
 
 import type {
   CreateEventParams,
   CreateEventResult,
-  CreateRecurringEventParams,
-  CreateRecurringEventResult,
   DeleteEventParams,
   DeleteEventResult,
   Event,
-  EventInstance,
   EventSummary,
   GetEventParams,
-  ListEventInstancesParams,
   ListEventsParams,
-  ListRecurringEventsParams,
-  Participant,
-  RecurringEventSummary,
-  RecurringRule,
   UpdateEventParams,
-  UpdateEventResult,
-  Visibility
+  UpdateEventResult
 } from "../../domain/schemas/calendar.js"
-import { Email, EventId, PersonId, PersonName } from "../../domain/schemas/shared.js"
+import { Email, EventId } from "../../domain/schemas/shared.js"
 import { HulyClient, type HulyClientError } from "../client.js"
-import { EventNotFoundError, RecurringEventNotFoundError } from "../errors.js"
+import { EventNotFoundError } from "../errors.js"
+import { calendar, core } from "../huly-plugins.js"
+import {
+  buildParticipants,
+  descriptionAsMarkupRef,
+  emptyEventDescription,
+  markupRefAsDescription,
+  ONE_HOUR_MS,
+  resolveEventInputs,
+  serverPopulatedUser,
+  stringToVisibility,
+  visibilityToString
+} from "./calendar-shared.js"
 import { clampLimit, toRef } from "./shared.js"
 
-import { calendar, contact, core } from "../huly-plugins.js"
+// Re-export recurring operations for barrel consumers
+export { createRecurringEvent, listEventInstances, listRecurringEvents } from "./calendar-recurring.js"
 
 // --- Error types ---
 
@@ -58,152 +52,6 @@ type GetEventError = HulyClientError | EventNotFoundError
 type CreateEventError = HulyClientError
 type UpdateEventError = HulyClientError | EventNotFoundError
 type DeleteEventError = HulyClientError | EventNotFoundError
-type ListRecurringEventsError = HulyClientError
-type CreateRecurringEventError = HulyClientError
-type ListEventInstancesError = HulyClientError | RecurringEventNotFoundError
-
-// --- SDK Type Bridges ---
-
-// SDK: HulyEvent["description"] is Markup | MarkupBlobRef | null; fetchMarkup expects MarkupBlobRef.
-// At runtime the value is always a MarkupBlobRef when non-empty; Markup (plain string) lacks the Ref<Blob> brand.
-const descriptionAsMarkupRef = (desc: HulyEvent["description"]): MarkupBlobRef => desc as MarkupBlobRef
-
-// SDK: MarkupBlobRef (Ref<Blob>) is assignable to Markup (string); null maps to empty string.
-const markupRefAsDescription = (
-  ref: MarkupBlobRef | null
-): HulyEvent["description"] => ref ?? ""
-
-const emptyEventDescription: HulyEvent["description"] = ""
-
-// SDK: Data<Event> requires 'user' (PersonId, branded string) but server populates from auth context.
-// PersonId = string & { __personId: true }; no SDK factory exists. Empty string is overwritten server-side.
-const serverPopulatedUser: HulyEvent["user"] = "" as HulyEvent["user"]
-
-// SDK: Visibility and HulyVisibility are identical string literal unions.
-const visibilityToString = (v: HulyVisibility | undefined): Visibility | undefined => v
-
-const stringToVisibility = (v: Visibility | undefined): HulyVisibility | undefined => v
-
-// --- Helpers ---
-
-const SECONDS_PER_MINUTE = 60
-const MINUTES_PER_HOUR = 60
-const MS_PER_SECOND = 1000
-const ONE_HOUR_MS = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * MS_PER_SECOND
-
-const hulyRuleToRule = (rule: HulyRecurringRule): RecurringRule => ({
-  freq: rule.freq,
-  endDate: rule.endDate,
-  count: rule.count,
-  interval: rule.interval,
-  byDay: rule.byDay,
-  byMonthDay: rule.byMonthDay,
-  byMonth: rule.byMonth,
-  bySetPos: rule.bySetPos,
-  wkst: rule.wkst
-})
-
-const ruleToHulyRule = (rule: RecurringRule): HulyRecurringRule => {
-  const result: HulyRecurringRule = {
-    freq: rule.freq
-  }
-
-  if (rule.endDate !== undefined) result.endDate = rule.endDate
-  if (rule.count !== undefined) result.count = rule.count
-  if (rule.interval !== undefined) result.interval = rule.interval
-  if (rule.byDay !== undefined) result.byDay = [...rule.byDay]
-  if (rule.byMonthDay !== undefined) result.byMonthDay = [...rule.byMonthDay]
-  if (rule.byMonth !== undefined) result.byMonth = [...rule.byMonth]
-  if (rule.bySetPos !== undefined) result.bySetPos = [...rule.bySetPos]
-  if (rule.wkst !== undefined) result.wkst = rule.wkst
-
-  return result
-}
-
-const findPersonsByEmails = (
-  client: HulyClient["Type"],
-  emails: ReadonlyArray<string>
-): Effect.Effect<Array<Person>, HulyClientError> =>
-  Effect.gen(function*() {
-    if (emails.length === 0) return []
-
-    const allChannels = yield* client.findAll<Channel>(
-      contact.class.Channel,
-      { value: { $in: [...emails] } }
-    )
-
-    const personIds = [...new Set(allChannels.map(c => toRef<Person>(c.attachedTo)))]
-    if (personIds.length === 0) return []
-
-    const persons = yield* client.findAll<Person>(
-      contact.class.Person,
-      { _id: { $in: personIds } }
-    )
-
-    return persons
-  })
-
-const getDefaultCalendar = (
-  client: HulyClient["Type"]
-): Effect.Effect<HulyCalendar | undefined, HulyClientError> =>
-  client.findOne<HulyCalendar>(
-    calendar.class.Calendar,
-    {}
-  )
-
-const buildParticipants = (
-  client: HulyClient["Type"],
-  participantRefs: ReadonlyArray<Ref<Contact>>
-): Effect.Effect<Array<Participant>, HulyClientError> =>
-  Effect.gen(function*() {
-    if (participantRefs.length === 0) return []
-
-    const persons = yield* client.findAll<Person>(
-      contact.class.Person,
-      { _id: { $in: participantRefs.map(toRef<Person>) } }
-    )
-
-    return persons.map(p => ({
-      id: PersonId.make(p._id),
-      name: PersonName.make(p.name)
-    }))
-  })
-
-interface ResolvedEventInputs {
-  calendarRef: Ref<HulyCalendar>
-  participantRefs: Array<Ref<Contact>>
-  descriptionRef: MarkupBlobRef | null
-}
-
-const resolveEventInputs = (
-  client: HulyClient["Type"],
-  params: {
-    readonly participants?: ReadonlyArray<string> | undefined
-    readonly description?: string | undefined
-  },
-  eventClass: Ref<Class<Doc>>,
-  eventId: string
-): Effect.Effect<ResolvedEventInputs, HulyClientError> =>
-  Effect.gen(function*() {
-    const cal = yield* getDefaultCalendar(client)
-    const calendarRef = cal?._id ?? toRef<HulyCalendar>("")
-
-    const participantRefs: Array<Ref<Contact>> = params.participants && params.participants.length > 0
-      ? (yield* findPersonsByEmails(client, params.participants)).map(p => p._id)
-      : []
-
-    const descriptionRef: MarkupBlobRef | null = params.description && params.description.trim() !== ""
-      ? yield* client.uploadMarkup(
-        eventClass,
-        toRef<Doc>(eventId),
-        "description",
-        params.description,
-        "markdown"
-      )
-      : null
-
-    return { calendarRef, participantRefs, descriptionRef }
-  })
 
 // --- Operations ---
 
@@ -454,172 +302,4 @@ export const deleteEvent = (
     )
 
     return { eventId: EventId.make(params.eventId), deleted: true }
-  })
-
-export const listRecurringEvents = (
-  params: ListRecurringEventsParams
-): Effect.Effect<Array<RecurringEventSummary>, ListRecurringEventsError, HulyClient> =>
-  Effect.gen(function*() {
-    const client = yield* HulyClient
-
-    const limit = clampLimit(params.limit)
-
-    const events = yield* client.findAll<HulyRecurringEvent>(
-      calendar.class.ReccuringEvent,
-      {},
-      {
-        limit,
-        sort: { modifiedOn: SortingOrder.Descending }
-      }
-    )
-
-    const summaries: Array<RecurringEventSummary> = events.map(event => ({
-      eventId: EventId.make(event.eventId),
-      title: event.title,
-      originalStartTime: event.originalStartTime,
-      rules: event.rules.map(hulyRuleToRule),
-      timeZone: event.timeZone,
-      modifiedOn: event.modifiedOn
-    }))
-
-    return summaries
-  })
-
-export const createRecurringEvent = (
-  params: CreateRecurringEventParams
-): Effect.Effect<CreateRecurringEventResult, CreateRecurringEventError, HulyClient> =>
-  Effect.gen(function*() {
-    const client = yield* HulyClient
-
-    const eventId = generateEventId()
-    const dueDate = params.dueDate ?? (params.startDate + ONE_HOUR_MS)
-
-    const { calendarRef, descriptionRef, participantRefs } = yield* resolveEventInputs(
-      client,
-      params,
-      calendar.class.ReccuringEvent,
-      eventId
-    )
-
-    const hulyRules = params.rules.map(ruleToHulyRule)
-
-    const eventData: AttachedData<HulyRecurringEvent> = {
-      eventId,
-      title: params.title,
-      description: markupRefAsDescription(descriptionRef),
-      date: params.startDate,
-      dueDate,
-      allDay: params.allDay ?? false,
-      calendar: calendarRef,
-      participants: participantRefs,
-      externalParticipants: [],
-      access: AccessLevel.Owner,
-      user: serverPopulatedUser,
-      blockTime: false,
-      rules: hulyRules,
-      exdate: [],
-      rdate: [],
-      originalStartTime: params.startDate,
-      timeZone: params.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-    }
-
-    if (params.location !== undefined) {
-      eventData.location = params.location
-    }
-
-    if (params.visibility !== undefined) {
-      const vis = stringToVisibility(params.visibility)
-      if (vis !== undefined) {
-        eventData.visibility = vis
-      }
-    }
-
-    yield* client.addCollection(
-      calendar.class.ReccuringEvent,
-      toRef<Space>(calendar.space.Calendar),
-      toRef<Doc>(calendar.space.Calendar),
-      toRef<Class<Doc>>(core.class.Space),
-      "events",
-      eventData
-    )
-
-    return { eventId: EventId.make(eventId) }
-  })
-
-export const listEventInstances = (
-  params: ListEventInstancesParams
-): Effect.Effect<Array<EventInstance>, ListEventInstancesError, HulyClient> =>
-  Effect.gen(function*() {
-    const client = yield* HulyClient
-
-    const recurringEvent = yield* client.findOne<HulyRecurringEvent>(
-      calendar.class.ReccuringEvent,
-      { eventId: params.recurringEventId }
-    )
-
-    if (recurringEvent === undefined) {
-      return yield* new RecurringEventNotFoundError({ eventId: params.recurringEventId })
-    }
-
-    const query: DocumentQuery<HulyRecurringInstance> = {
-      recurringEventId: params.recurringEventId
-    }
-
-    if (params.from !== undefined) {
-      query.date = { $gte: params.from }
-    }
-
-    if (params.to !== undefined) {
-      query.dueDate = { $lte: params.to }
-    }
-
-    const limit = clampLimit(params.limit)
-
-    const instances = yield* client.findAll<HulyRecurringInstance>(
-      calendar.class.ReccuringInstance,
-      query,
-      {
-        limit,
-        sort: { date: SortingOrder.Ascending }
-      }
-    )
-
-    const participantMap = new Map<string, Array<Participant>>()
-    if (params.includeParticipants) {
-      const allParticipantRefs = [...new Set(instances.flatMap(i => i.participants))]
-      if (allParticipantRefs.length > 0) {
-        const participants = yield* buildParticipants(client, allParticipantRefs)
-        const participantById = new Map(participants.map(p => [p.id, p]))
-        for (const instance of instances) {
-          const instanceParticipants = instance.participants
-            .map(ref => participantById.get(PersonId.make(ref)))
-            .filter((p): p is Participant => p !== undefined)
-          participantMap.set(instance.eventId, instanceParticipants)
-        }
-      } else {
-        for (const instance of instances) {
-          participantMap.set(instance.eventId, [])
-        }
-      }
-    }
-
-    const results: Array<EventInstance> = instances.map(instance => ({
-      eventId: EventId.make(instance.eventId),
-      recurringEventId: EventId.make(instance.recurringEventId),
-      title: instance.title,
-      date: instance.date,
-      dueDate: instance.dueDate,
-      originalStartTime: instance.originalStartTime,
-      allDay: instance.allDay,
-      location: instance.location,
-      visibility: visibilityToString(instance.visibility),
-      isCancelled: instance.isCancelled,
-      isVirtual: instance.virtual,
-      participants: params.includeParticipants ? (participantMap.get(instance.eventId) ?? []) : undefined,
-      externalParticipants: instance.externalParticipants
-        ? instance.externalParticipants.map(p => Email.make(p))
-        : undefined
-    }))
-
-    return results
   })
