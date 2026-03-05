@@ -146,19 +146,19 @@ export const Email = Schema.NonEmptyString.pipe(
 )
 export type Email = Schema.Schema.Type<typeof Email>
 
-export const StatusName = Schema.String.pipe(Schema.brand("StatusName"))
+export const StatusName = NonEmptyString.pipe(Schema.brand("StatusName"))
 export type StatusName = Schema.Schema.Type<typeof StatusName>
 
-export const PersonName = Schema.String.pipe(Schema.brand("PersonName"))
+export const PersonName = NonEmptyString.pipe(Schema.brand("PersonName"))
 export type PersonName = Schema.Schema.Type<typeof PersonName>
 
-export const ComponentLabel = Schema.String.pipe(Schema.brand("ComponentLabel"))
+export const ComponentLabel = NonEmptyString.pipe(Schema.brand("ComponentLabel"))
 export type ComponentLabel = Schema.Schema.Type<typeof ComponentLabel>
 
-export const MilestoneLabel = Schema.String.pipe(Schema.brand("MilestoneLabel"))
+export const MilestoneLabel = NonEmptyString.pipe(Schema.brand("MilestoneLabel"))
 export type MilestoneLabel = Schema.Schema.Type<typeof MilestoneLabel>
 
-export const ChannelName = Schema.String.pipe(Schema.brand("ChannelName"))
+export const ChannelName = NonEmptyString.pipe(Schema.brand("ChannelName"))
 export type ChannelName = Schema.Schema.Type<typeof ChannelName>
 
 export const MimeType = NonEmptyString.pipe(Schema.brand("MimeType"))
@@ -170,7 +170,7 @@ export type ObjectClassName = Schema.Schema.Type<typeof ObjectClassName>
 export const EmojiCode = NonEmptyString.pipe(Schema.brand("EmojiCode"))
 export type EmojiCode = Schema.Schema.Type<typeof EmojiCode>
 
-export const ContactProvider = Schema.String.pipe(Schema.brand("ContactProvider"))
+export const ContactProvider = NonEmptyString.pipe(Schema.brand("ContactProvider"))
 export type ContactProvider = Schema.Schema.Type<typeof ContactProvider>
 
 export const NotificationProviderId = NonEmptyString.pipe(Schema.brand("NotificationProviderId"))
@@ -247,7 +247,7 @@ export type TagIdentifier = Schema.Schema.Type<typeof TagIdentifier>
 export const TagCategoryIdentifier = NonEmptyString.pipe(Schema.brand("TagCategoryIdentifier"))
 export type TagCategoryIdentifier = Schema.Schema.Type<typeof TagCategoryIdentifier>
 
-export const MemberReference = Schema.String.pipe(Schema.brand("MemberReference"))
+export const MemberReference = NonEmptyString.pipe(Schema.brand("MemberReference"))
 export type MemberReference = Schema.Schema.Type<typeof MemberReference>
 
 export const TestProjectIdentifier = NonEmptyString.pipe(Schema.brand("TestProjectIdentifier"))

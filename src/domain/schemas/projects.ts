@@ -33,7 +33,7 @@ export interface ListProjectsResult {
 
 export const ProjectSchema = Schema.Struct({
   identifier: ProjectIdentifier,
-  name: Schema.String,
+  name: NonEmptyString,
   description: Schema.optional(Schema.String),
   archived: Schema.Boolean,
   defaultStatus: Schema.optional(StatusName),

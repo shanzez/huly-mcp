@@ -22,7 +22,7 @@ import {
 
 export const IssueTemplateChildSchema = Schema.Struct({
   id: IssueTemplateChildId,
-  title: Schema.String,
+  title: NonEmptyString,
   description: Schema.optional(Schema.String),
   priority: Schema.optional(IssuePrioritySchema),
   assignee: Schema.optional(PersonName),
@@ -68,7 +68,7 @@ export type ChildTemplateInput = Schema.Schema.Type<typeof ChildTemplateInputSch
 
 export const IssueTemplateSummarySchema = Schema.Struct({
   id: IssueTemplateId,
-  title: Schema.String,
+  title: NonEmptyString,
   priority: Schema.optional(IssuePrioritySchema),
   childrenCount: Schema.optional(Schema.Number),
   modifiedOn: Schema.optional(Timestamp)
@@ -81,7 +81,7 @@ export type IssueTemplateSummary = Schema.Schema.Type<typeof IssueTemplateSummar
 
 export const IssueTemplateSchema = Schema.Struct({
   id: IssueTemplateId,
-  title: Schema.String,
+  title: NonEmptyString,
   description: Schema.optional(Schema.String),
   priority: Schema.optional(IssuePrioritySchema),
   assignee: Schema.optional(PersonName),

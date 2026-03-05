@@ -69,13 +69,15 @@ describe("Comment Schemas", () => {
       }))
 
     // test-revizorro: approved
-    it.effect("accepts empty body", () =>
+    it.effect("rejects empty body", () =>
       Effect.gen(function*() {
-        const result = yield* parseComment({
-          id: "comment-empty",
-          body: ""
-        })
-        expect(result.body).toBe("")
+        const error = yield* Effect.flip(
+          parseComment({
+            id: "comment-empty",
+            body: ""
+          })
+        )
+        expect(error._tag).toBe("ParseError")
       }))
 
     // test-revizorro: approved

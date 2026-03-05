@@ -4,7 +4,7 @@ import { CommentId, IssueIdentifier, LimitParam, NonEmptyString, ProjectIdentifi
 
 export const CommentSchema = Schema.Struct({
   id: CommentId,
-  body: Schema.String,
+  body: NonEmptyString,
   author: Schema.optional(Schema.String),
   authorId: Schema.optional(NonEmptyString),
   createdOn: Schema.optional(Timestamp),
