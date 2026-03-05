@@ -5,9 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
-[![MCP Server](https://badge.mcpx.dev?type=server&features=tools)](https://github.com/dearlordylord/huly-mcp)
-[![glama](https://glama.ai/mcp/servers/@dearlordylord/huly-mcp/badge)](https://glama.ai/mcp/servers/@dearlordylord/huly-mcp)
-[![cooked at Monadical](https://img.shields.io/endpoint?url=https://monadical.com/static/api/cooked-at-monadical.json)](https://monadical.com)
+[![MCP Server](https://badge.mcpx.dev?type=server&features=tools)](https://github.com/dearlordylord/huly-mcp)[![cooked at Monadical](https://img.shields.io/endpoint?url=https://monadical.com/static/api/cooked-at-monadical.json)](https://monadical.com)
 
 MCP server for [Huly](https://huly.io/) integration.
 
