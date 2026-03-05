@@ -6,6 +6,7 @@ import {
   createDocumentParamsJsonSchema,
   createIssueParamsJsonSchema,
   deleteDocumentParamsJsonSchema,
+  editDocumentParamsJsonSchema,
   getDocumentParamsJsonSchema,
   getIssueParamsJsonSchema,
   getTimeReportParamsJsonSchema,
@@ -21,6 +22,7 @@ import {
   parseCreateDocumentParams,
   parseCreateIssueParams,
   parseDeleteDocumentParams,
+  parseEditDocumentParams,
   parseGetDocumentParams,
   parseGetIssueParams,
   parseGetTimeReportParams,
@@ -35,11 +37,9 @@ import {
   parseProject,
   parseStartTimerParams,
   parseStopTimerParams,
-  parseUpdateDocumentParams,
   parseUpdateIssueParams,
   startTimerParamsJsonSchema,
   stopTimerParamsJsonSchema,
-  updateDocumentParamsJsonSchema,
   updateIssueParamsJsonSchema
 } from "../../src/domain/schemas.js"
 import { PersonRefSchema } from "../../src/domain/schemas/issues.js"
@@ -677,11 +677,10 @@ describe("Domain Schemas", () => {
       }))
   })
 
-  describe("UpdateDocumentParamsSchema", () => {
-    // test-revizorro: approved
-    it.effect("parses minimal params", () =>
+  describe("EditDocumentParamsSchema", () => {
+    it.effect("parses minimal params (no content change)", () =>
       Effect.gen(function*() {
-        const result = yield* parseUpdateDocumentParams({
+        const result = yield* parseEditDocumentParams({
           teamspace: "My Docs",
           document: "Getting Started"
         })
@@ -689,10 +688,9 @@ describe("Domain Schemas", () => {
         expect(result.document).toBe("Getting Started")
       }))
 
-    // test-revizorro: approved
-    it.effect("parses with update fields", () =>
+    it.effect("parses full replace mode", () =>
       Effect.gen(function*() {
-        const result = yield* parseUpdateDocumentParams({
+        const result = yield* parseEditDocumentParams({
           teamspace: "My Docs",
           document: "Getting Started",
           title: "Updated Title",
@@ -700,6 +698,69 @@ describe("Domain Schemas", () => {
         })
         expect(result.title).toBe("Updated Title")
         expect(result.content).toBe("Updated content")
+      }))
+
+    it.effect("parses search-and-replace mode", () =>
+      Effect.gen(function*() {
+        const result = yield* parseEditDocumentParams({
+          teamspace: "My Docs",
+          document: "Getting Started",
+          old_text: "old stuff",
+          new_text: "new stuff"
+        })
+        expect(result.old_text).toBe("old stuff")
+        expect(result.new_text).toBe("new stuff")
+      }))
+
+    it.effect("parses search-and-replace with replace_all", () =>
+      Effect.gen(function*() {
+        const result = yield* parseEditDocumentParams({
+          teamspace: "My Docs",
+          document: "Getting Started",
+          old_text: "foo",
+          new_text: "bar",
+          replace_all: true
+        })
+        expect(result.replace_all).toBe(true)
+      }))
+
+    it.effect("rejects content + old_text together", () =>
+      Effect.gen(function*() {
+        const error = yield* Effect.flip(
+          parseEditDocumentParams({
+            teamspace: "My Docs",
+            document: "Getting Started",
+            content: "full replace",
+            old_text: "partial",
+            new_text: "edit"
+          })
+        )
+        expect(error._tag).toBe("ParseError")
+      }))
+
+    it.effect("rejects old_text without new_text", () =>
+      Effect.gen(function*() {
+        const error = yield* Effect.flip(
+          parseEditDocumentParams({
+            teamspace: "My Docs",
+            document: "Getting Started",
+            old_text: "something"
+          })
+        )
+        expect(error._tag).toBe("ParseError")
+      }))
+
+    it.effect("rejects empty old_text", () =>
+      Effect.gen(function*() {
+        const error = yield* Effect.flip(
+          parseEditDocumentParams({
+            teamspace: "My Docs",
+            document: "Getting Started",
+            old_text: "   ",
+            new_text: "replacement"
+          })
+        )
+        expect(error._tag).toBe("ParseError")
       }))
   })
 
@@ -756,13 +817,16 @@ describe("Domain Schemas", () => {
         expect(schema.properties).toHaveProperty("content")
       }))
 
-    // test-revizorro: approved
-    it.effect("generates JSON Schema for UpdateDocumentParams", () =>
+    it.effect("generates JSON Schema for EditDocumentParams", () =>
       Effect.gen(function*() {
-        const schema = updateDocumentParamsJsonSchema as JsonSchemaObject
+        const schema = editDocumentParamsJsonSchema as JsonSchemaObject
         expect(schema.type).toBe("object")
         expect(schema.required).toContain("teamspace")
         expect(schema.required).toContain("document")
+        expect(schema.properties).toHaveProperty("old_text")
+        expect(schema.properties).toHaveProperty("new_text")
+        expect(schema.properties).toHaveProperty("replace_all")
+        expect(schema.properties).toHaveProperty("content")
       }))
 
     // test-revizorro: approved

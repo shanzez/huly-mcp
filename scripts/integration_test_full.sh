@@ -108,6 +108,77 @@ run_capture_only() {
   return 0
 }
 
+# Like run_test but EXPECTS isError:true. PASSes if error, FAILs if success.
+run_expect_error() {
+  local name="$1"
+  local payload="$2"
+  local result
+  result=$(call_tool "$payload")
+  if [ -z "$result" ]; then
+    echo "FAIL: $name (no response, expected error)"
+    FAILED=$((FAILED + 1))
+    ERRORS="${ERRORS}\n  - ${name}: no response (expected error)"
+    return 1
+  fi
+  local is_error
+  is_error=$(echo "$result" | jq -r '.result.isError // false' 2>/dev/null)
+  if [ "$is_error" = "true" ]; then
+    echo "PASS: $name (got expected error)"
+    PASSED=$((PASSED + 1))
+    return 0
+  fi
+  echo "FAIL: $name (expected error but succeeded)"
+  FAILED=$((FAILED + 1))
+  ERRORS="${ERRORS}\n  - ${name}: expected error but succeeded"
+  return 1
+}
+
+# Fetch doc content, assert substring present. Args: test_name teamspace doc_id substring
+assert_contains() {
+  local name="$1" ts="$2" doc="$3" substr="$4"
+  local text
+  text=$(run_capture_only \
+    "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"get_document\",\"arguments\":{\"teamspace\":\"$ts\",\"document\":\"$doc\"}},\"id\":2}")
+  if [ $? -ne 0 ]; then
+    echo "FAIL: $name (could not fetch doc)"
+    FAILED=$((FAILED + 1))
+    ERRORS="${ERRORS}\n  - ${name}: could not fetch doc"
+    return 1
+  fi
+  if printf '%s\n' "$text" | grep -qF "$substr"; then
+    echo "PASS: $name"
+    PASSED=$((PASSED + 1))
+    return 0
+  fi
+  echo "FAIL: $name (substring not found: $substr)"
+  FAILED=$((FAILED + 1))
+  ERRORS="${ERRORS}\n  - ${name}: substring not found"
+  return 1
+}
+
+# Fetch doc content, assert substring NOT present. Args: test_name teamspace doc_id substring
+assert_not_contains() {
+  local name="$1" ts="$2" doc="$3" substr="$4"
+  local text
+  text=$(run_capture_only \
+    "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"get_document\",\"arguments\":{\"teamspace\":\"$ts\",\"document\":\"$doc\"}},\"id\":2}")
+  if [ $? -ne 0 ]; then
+    echo "FAIL: $name (could not fetch doc)"
+    FAILED=$((FAILED + 1))
+    ERRORS="${ERRORS}\n  - ${name}: could not fetch doc"
+    return 1
+  fi
+  if printf '%s\n' "$text" | grep -qF "$substr"; then
+    echo "FAIL: $name (substring should be absent: $substr)"
+    FAILED=$((FAILED + 1))
+    ERRORS="${ERRORS}\n  - ${name}: substring should be absent"
+    return 1
+  fi
+  echo "PASS: $name"
+  PASSED=$((PASSED + 1))
+  return 0
+}
+
 # Use a temp dir without spaces (TMPDIR may contain spaces which would break JSON payloads)
 TEST_TMPDIR="${TMPDIR:-/tmp}"
 if [[ "$TEST_TMPDIR" == *" "* ]]; then
@@ -390,13 +461,94 @@ if [ -n "$TS_NAME" ]; then
     echo "  => doc: $DOC_ID"
     run_test "get_document($DOC_ID)" \
       "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"get_document\",\"arguments\":{\"teamspace\":\"$TS_NAME\",\"document\":\"$DOC_ID\"}},\"id\":2}"
-    run_test "update_document($DOC_ID)" \
-      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"update_document\",\"arguments\":{\"teamspace\":\"$TS_NAME\",\"document\":\"$DOC_ID\",\"title\":\"Updated Doc\"}},\"id\":2}"
+    run_test "edit_document($DOC_ID) title rename" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$TS_NAME\",\"document\":\"$DOC_ID\",\"title\":\"Updated Doc\"}},\"id\":2}"
     run_test "delete_document($DOC_ID)" \
       "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"delete_document\",\"arguments\":{\"teamspace\":\"$TS_NAME\",\"document\":\"$DOC_ID\"}},\"id\":2}"
   fi
 else
   skip_test "documents" "no teamspace found"
+fi
+echo ""
+
+##############################
+# 7b. DOCUMENT EDIT (S&R)
+##############################
+echo "=== 7b. Document Edit (Search & Replace) ==="
+
+# Big structured markdown content (~3K chars) with repeated words, code block, special chars
+SR_CONTENT='# Project Overview\n\nThis document describes the **Project Alpha** architecture. TODO: finalize scope.\n\n## Getting Started\n\nTo set up the project, follow these steps:\n\n- Install dependencies with `pnpm install`\n- Configure the `config.yaml` file\n- Set the `$API_KEY` environment variable\n- TODO: add Docker instructions\n\n## API Reference\n\nThe API exposes the following endpoints:\n\n### GET /users\n\nReturns a list of users. The response includes `id`, `name`, and `email` fields.\nEach user object also contains a `role` field with values like *admin*, *editor*, or *viewer*.\n\n### POST /users\n\nCreates a new user. Required fields: `name` and `email`.\n\n## Code Examples\n\n```typescript\nimport { Client } from \"./sdk\";\n\nconst client = new Client({ baseUrl: \"https://api.example.com\" });\n\nasync function main() {\n  const users = await client.getUsers();\n  console.log(\"Found users:\", users.length);\n  \n  for (const user of users) {\n    console.log(`User: ${user.name} (${user.email})`);\n  }\n}\n\nmain().catch(console.error);\n```\n\n## Configuration\n\nThe system supports the following configuration options:\n\n| Option | Type | Default | Description |\n|--------|------|---------|-------------|\n| port | number | 3000 | Server port |\n| debug | boolean | false | Enable debug mode |\n| logLevel | string | \"info\" | Log verbosity |\n\n## Deployment Notes\n\nThe deployment pipeline uses GitHub Actions. TODO: document rollback procedure.\nMake sure the `$DATABASE_URL` variable is set in the production environment.\nThe health check endpoint is available at `/health` and returns a 200 status code.\n\n## Troubleshooting\n\nCommon issues and solutions:\n\n- **Connection timeout**: Check that the `$API_KEY` is valid and not expired\n- **Rate limiting**: The API allows 100 requests per minute per API key\n- **Data sync**: Allow up to 5 minutes for changes to propagate across regions'
+
+# Create a dedicated teamspace for S&R tests
+SR_TS_TEXT=$(run_capture "create_teamspace(SR)" \
+  '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"create_teamspace","arguments":{"name":"SR Test Space","description":"search and replace integration test"}},"id":2}')
+if [ $? -eq 0 ]; then
+  SR_TS_ID=$(echo "$SR_TS_TEXT" | jq -r '.id' 2>/dev/null)
+  echo "  => teamspace: $SR_TS_ID"
+
+  # Step 1: Create doc with big content
+  SR_DOC_TEXT=$(run_capture "sr: create big doc" \
+    "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"create_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"title\":\"SR Test Doc\",\"content\":\"$SR_CONTENT\"}},\"id\":2}")
+  if [ $? -eq 0 ]; then
+    SR_DOC_ID=$(echo "$SR_DOC_TEXT" | jq -r '.id' 2>/dev/null)
+    echo "  => doc: $SR_DOC_ID"
+    assert_contains "sr: baseline has API Reference" "$SR_TS_ID" "$SR_DOC_ID" "## API Reference"
+
+    # Step 2: Replace unique heading
+    run_test "sr: heading rename" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"old_text\":\"## API Reference\",\"new_text\":\"## API Docs\"}},\"id\":2}"
+    assert_contains "sr: heading changed" "$SR_TS_ID" "$SR_DOC_ID" "## API Docs"
+    assert_not_contains "sr: old heading gone" "$SR_TS_ID" "$SR_DOC_ID" "## API Reference"
+
+    # Step 3: Replace inside code block
+    run_test "sr: edit inside code block" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"old_text\":\"console.log(\\\"Found users:\\\", users.length)\",\"new_text\":\"logger.info(\\\"Found users:\\\", users.length)\"}},\"id\":2}"
+    assert_contains "sr: code block updated" "$SR_TS_ID" "$SR_DOC_ID" "logger.info"
+    assert_contains "sr: code fences intact" "$SR_TS_ID" "$SR_DOC_ID" '```typescript'
+
+    # Step 4: Replace multi-word phrase
+    run_test "sr: multi-word phrase" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"old_text\":\"health check endpoint is available at\",\"new_text\":\"readiness probe is exposed at\"}},\"id\":2}"
+    assert_contains "sr: new phrase present" "$SR_TS_ID" "$SR_DOC_ID" "readiness probe is exposed at"
+    assert_not_contains "sr: old phrase gone" "$SR_TS_ID" "$SR_DOC_ID" "health check endpoint is available at"
+
+    # Step 5: replace_all on word appearing 3x (TODO)
+    run_test "sr: replace_all TODO" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"old_text\":\"TODO\",\"new_text\":\"DONE\",\"replace_all\":true}},\"id\":2}"
+    assert_not_contains "sr: no TODO remains" "$SR_TS_ID" "$SR_DOC_ID" "TODO"
+    assert_contains "sr: DONE present" "$SR_TS_ID" "$SR_DOC_ID" "DONE"
+
+    # Step 6: Delete text (empty new_text) — remove a bullet point
+    run_test "sr: delete bullet" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"old_text\":\"- **Rate limiting**: The API allows 100 requests per minute per API key\",\"new_text\":\"\"}},\"id\":2}"
+    assert_not_contains "sr: bullet removed" "$SR_TS_ID" "$SR_DOC_ID" "Rate limiting"
+    assert_contains "sr: neighbor intact" "$SR_TS_ID" "$SR_DOC_ID" "Connection timeout"
+
+    # Step 7: Non-existent text (expect error)
+    run_expect_error "sr: not found error" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"old_text\":\"this text does not exist anywhere in the document\",\"new_text\":\"replacement\"}},\"id\":2}"
+    assert_contains "sr: content unchanged after not-found" "$SR_TS_ID" "$SR_DOC_ID" "Project Alpha"
+
+    # Step 8: Ambiguous match without replace_all (expect error) — "DONE" appears 3x
+    run_expect_error "sr: ambiguous match error" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"old_text\":\"DONE\",\"new_text\":\"FIXED\"}},\"id\":2}"
+    assert_contains "sr: content unchanged after ambiguous" "$SR_TS_ID" "$SR_DOC_ID" "Project Alpha"
+
+    # Step 9: Full replace — overwrite entire content
+    run_test "sr: full replace" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"edit_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\",\"content\":\"# Replaced\"}},\"id\":2}"
+    assert_contains "sr: full replace content" "$SR_TS_ID" "$SR_DOC_ID" "# Replaced"
+    assert_not_contains "sr: old content gone" "$SR_TS_ID" "$SR_DOC_ID" "Project Alpha"
+
+    # Step 10: Cleanup
+    run_test "sr: delete doc" \
+      "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"delete_document\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\",\"document\":\"$SR_DOC_ID\"}},\"id\":2}"
+  fi
+
+  run_test "sr: delete teamspace" \
+    "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"delete_teamspace\",\"arguments\":{\"teamspace\":\"$SR_TS_ID\"}},\"id\":2}"
+else
+  skip_test "document S&R" "could not create teamspace"
 fi
 echo ""
 

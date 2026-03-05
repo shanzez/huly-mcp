@@ -18,6 +18,7 @@ import type { WorkspaceClientOperations } from "../huly/workspace-client.js"
 import type { TelemetryOperations } from "../telemetry/telemetry.js"
 import { TelemetryService } from "../telemetry/telemetry.js"
 import { VERSION } from "../version.js"
+import type { McpToolResponse } from "./error-mapping.js"
 import { createUnknownToolError, mapDomainErrorToMcp, McpErrorCode, toMcpResponse } from "./error-mapping.js"
 import type { ToolRegistry } from "./tools/index.js"
 import { CATEGORY_NAMES, createFilteredRegistry, resolveAnnotations, toolRegistry } from "./tools/index.js"
@@ -89,11 +90,32 @@ interface McpServerOperations {
  * Create a configured MCP Server instance with tool handlers.
  * Used for both stdio and HTTP transports.
  */
+type McpServerHandle = readonly [server: Server, drainInflight: () => Promise<void>]
+
+const DRAIN_POLL_MS = 50
+const DRAIN_TIMEOUT_MS = 30_000
+
 const createMcpServer = (
   resolveClients: () => Promise<ClientBundle>,
   telemetry: TelemetryOperations,
   registry: ToolRegistry
-): Server => {
+): McpServerHandle => {
+  let inflight = 0
+  const drainInflight = (): Promise<void> => {
+    if (inflight <= 0) return Promise.resolve()
+    return new Promise((resolve) => {
+      const start = Date.now()
+      const check = () => {
+        if (inflight <= 0 || Date.now() - start > DRAIN_TIMEOUT_MS) {
+          resolve()
+        } else {
+          setTimeout(check, DRAIN_POLL_MS)
+        }
+      }
+      check()
+    })
+  }
+
   const server = new Server(
     {
       name: "huly-mcp",
@@ -122,59 +144,85 @@ const createMcpServer = (
   })
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { arguments: args, name } = request.params
-
-    const start = Date.now()
-
-    let clients: ClientBundle
+    inflight++
     try {
-      clients = await resolveClients()
-    } catch (e) {
-      const durationMs = Date.now() - start
-      const errorResponse = mapDomainErrorToMcp(
-        new HulyError({ message: `Failed to initialize Huly clients: ${e instanceof Error ? e.message : String(e)}` })
+      const { arguments: args, name } = request.params
+
+      const start = Date.now()
+      const inputBytes = JSON.stringify(args ?? {}).length
+
+      const deriveEditMode = (): string | undefined => {
+        if (name !== "edit_document" || args === undefined) return undefined
+        if ("old_text" in args) return "search_and_replace"
+        if ("content" in args) return "full_replace"
+        return "title_only"
+      }
+      const editMode = deriveEditMode()
+
+      const computeOutputBytes = (response: McpToolResponse): number =>
+        response.content.reduce((sum, c) => sum + c.text.length, 0)
+
+      let clients: ClientBundle
+      try {
+        clients = await resolveClients()
+      } catch (e) {
+        const durationMs = Date.now() - start
+        const errorResponse = mapDomainErrorToMcp(
+          new HulyError({ message: `Failed to initialize Huly clients: ${e instanceof Error ? e.message : String(e)}` })
+        )
+        telemetry.toolCalled({
+          toolName: name,
+          status: "error",
+          errorTag: errorResponse._meta.errorTag,
+          durationMs,
+          inputBytes,
+          outputBytes: computeOutputBytes(errorResponse),
+          editMode
+        })
+        return toMcpResponse(errorResponse)
+      }
+
+      const response = await registry.handleToolCall(
+        name,
+        args ?? {},
+        clients.hulyClient,
+        clients.storageClient,
+        clients.workspaceClient
       )
+      const durationMs = Date.now() - start
+
+      if (response === null) {
+        const errorResponse = createUnknownToolError(name)
+        telemetry.toolCalled({
+          toolName: name,
+          status: "error",
+          errorTag: errorResponse._meta.errorTag,
+          durationMs,
+          inputBytes,
+          outputBytes: computeOutputBytes(errorResponse),
+          editMode
+        })
+        return toMcpResponse(errorResponse)
+      }
+
+      const isInternalError = response._meta?.errorCode === McpErrorCode.InternalError
       telemetry.toolCalled({
         toolName: name,
-        status: "error",
-        errorTag: errorResponse._meta.errorTag,
-        durationMs
+        status: isInternalError ? "error" : "success",
+        errorTag: response._meta?.errorTag,
+        durationMs,
+        inputBytes,
+        outputBytes: computeOutputBytes(response),
+        editMode
       })
-      return toMcpResponse(errorResponse)
+
+      return toMcpResponse(response)
+    } finally {
+      inflight--
     }
-
-    const response = await registry.handleToolCall(
-      name,
-      args ?? {},
-      clients.hulyClient,
-      clients.storageClient,
-      clients.workspaceClient
-    )
-    const durationMs = Date.now() - start
-
-    if (response === null) {
-      const errorResponse = createUnknownToolError(name)
-      telemetry.toolCalled({
-        toolName: name,
-        status: "error",
-        errorTag: errorResponse._meta.errorTag,
-        durationMs
-      })
-      return toMcpResponse(errorResponse)
-    }
-
-    const isInternalError = response._meta?.errorCode === McpErrorCode.InternalError
-    telemetry.toolCalled({
-      toolName: name,
-      status: isInternalError ? "error" : "success",
-      errorTag: response._meta?.errorTag,
-      durationMs
-    })
-
-    return toMcpResponse(response)
   })
 
-  return server
+  return [server, drainInflight] as const
 }
 
 export class McpServerService extends Context.Tag("@hulymcp/McpServer")<
@@ -223,7 +271,11 @@ export class McpServerService extends Context.Tag("@hulymcp/McpServer")<
               yield* Ref.set(isRunning, true)
 
               if (config.transport === "stdio") {
-                const stdioServer = createMcpServer(config.resolveClients, telemetry, registry)
+                const [stdioServer, drainInflight] = createMcpServer(
+                  config.resolveClients,
+                  telemetry,
+                  registry
+                )
                 yield* Ref.set(serverRef, stdioServer)
                 const transport = new StdioServerTransport()
 
@@ -238,8 +290,10 @@ export class McpServerService extends Context.Tag("@hulymcp/McpServer")<
 
                 yield* Effect.async<void, McpServerError>((resume) => {
                   const cleanup = () => {
-                    Effect.runSync(Ref.set(isRunning, false))
-                    resume(Effect.void)
+                    void drainInflight().then(() => {
+                      Effect.runSync(Ref.set(isRunning, false))
+                      resume(Effect.void)
+                    })
                   }
 
                   process.on("SIGINT", cleanup)
@@ -276,7 +330,7 @@ export class McpServerService extends Context.Tag("@hulymcp/McpServer")<
 
                 yield* startHttpTransport(
                   { port, host },
-                  () => createMcpServer(config.resolveClients, telemetry, registry)
+                  () => createMcpServer(config.resolveClients, telemetry, registry)[0]
                 ).pipe(
                   Effect.scoped,
                   Effect.mapError(

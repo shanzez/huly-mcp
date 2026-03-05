@@ -30,6 +30,7 @@ const READ_PREFIXES = ["list_", "get_", "search_", "fulltext_", "download_", "pr
 const CREATE_PREFIXES = ["create_", "add_", "upload_", "send_", "log_"]
 const UPDATE_PREFIXES = [
   "update_",
+  "edit_",
   "set_",
   "pin_",
   "unpin_",

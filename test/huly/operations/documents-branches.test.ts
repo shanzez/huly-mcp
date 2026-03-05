@@ -4,7 +4,7 @@ import type { Document as HulyDocument, Teamspace as HulyTeamspace } from "@hcen
 import { Effect } from "effect"
 import { expect } from "vitest"
 import { HulyClient, type HulyClientOperations } from "../../../src/huly/client.js"
-import { listDocuments, updateDocument } from "../../../src/huly/operations/documents.js"
+import { editDocument, listDocuments } from "../../../src/huly/operations/documents.js"
 import { documentIdentifier, teamspaceIdentifier } from "../../helpers/brands.js"
 
 import { documentPlugin } from "../../../src/huly/huly-plugins.js"
@@ -245,8 +245,7 @@ describe("listDocuments - contentSearch branch (line 200)", () => {
     }))
 })
 
-describe("updateDocument - in-place content update branch (lines 358-365)", () => {
-  // test-revizorro: approved
+describe("editDocument - in-place content update branch (full replace mode)", () => {
   it.effect("uses updateMarkup when document already has content", () =>
     Effect.gen(function*() {
       const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
@@ -266,7 +265,7 @@ describe("updateDocument - in-place content update branch (lines 358-365)", () =
         captureUpdateDoc
       })
 
-      const result = yield* updateDocument({
+      const result = yield* editDocument({
         teamspace: teamspaceIdentifier("My Docs"),
         document: documentIdentifier("Existing Doc"),
         content: "# Updated in place"
@@ -280,7 +279,6 @@ describe("updateDocument - in-place content update branch (lines 358-365)", () =
       expect(captureUpdateDoc.operations?.content).toBeUndefined()
     }))
 
-  // test-revizorro: approved
   it.effect("updates title alongside in-place content update", () =>
     Effect.gen(function*() {
       const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
@@ -300,7 +298,7 @@ describe("updateDocument - in-place content update branch (lines 358-365)", () =
         captureUpdateDoc
       })
 
-      const result = yield* updateDocument({
+      const result = yield* editDocument({
         teamspace: teamspaceIdentifier("My Docs"),
         document: documentIdentifier("Old Title"),
         title: "New Title",

@@ -3,6 +3,7 @@ import {
   createTeamspaceParamsJsonSchema,
   deleteDocumentParamsJsonSchema,
   deleteTeamspaceParamsJsonSchema,
+  editDocumentParamsJsonSchema,
   getDocumentParamsJsonSchema,
   getTeamspaceParamsJsonSchema,
   listDocumentsParamsJsonSchema,
@@ -11,13 +12,12 @@ import {
   parseCreateTeamspaceParams,
   parseDeleteDocumentParams,
   parseDeleteTeamspaceParams,
+  parseEditDocumentParams,
   parseGetDocumentParams,
   parseGetTeamspaceParams,
   parseListDocumentsParams,
   parseListTeamspacesParams,
-  parseUpdateDocumentParams,
   parseUpdateTeamspaceParams,
-  updateDocumentParamsJsonSchema,
   updateTeamspaceParamsJsonSchema
 } from "../../domain/schemas.js"
 import {
@@ -25,11 +25,11 @@ import {
   createTeamspace,
   deleteDocument,
   deleteTeamspace,
+  editDocument,
   getDocument,
   getTeamspace,
   listDocuments,
   listTeamspaces,
-  updateDocument,
   updateTeamspace
 } from "../../huly/operations/documents.js"
 import { createToolHandler, type RegisteredTool } from "./registry.js"
@@ -133,15 +133,15 @@ export const documentTools: ReadonlyArray<RegisteredTool> = [
     )
   },
   {
-    name: "update_document",
+    name: "edit_document",
     description:
-      "Update fields on an existing Huly document. Only provided fields are modified. Content updates support markdown.",
+      "Edit an existing Huly document. Two content modes (mutually exclusive): (1) 'content' for full replace, (2) 'old_text' + 'new_text' for targeted search-and-replace. Multiple matches error unless replace_all is true. Empty new_text deletes matched text. Also supports renaming via 'title'.",
     category: CATEGORY,
-    inputSchema: updateDocumentParamsJsonSchema,
+    inputSchema: editDocumentParamsJsonSchema,
     handler: createToolHandler(
-      "update_document",
-      parseUpdateDocumentParams,
-      updateDocument
+      "edit_document",
+      parseEditDocumentParams,
+      editDocument
     )
   },
   {

@@ -18,6 +18,9 @@ type ToolCalledProperties = {
   readonly status: "success" | "error"
   readonly duration_ms: number
   readonly error_tag?: string
+  readonly input_bytes?: number
+  readonly output_bytes?: number
+  readonly edit_mode?: string
 }
 
 type TelemetryEvent =
@@ -90,7 +93,10 @@ export const createPostHogTelemetry = (debug: boolean): TelemetryOperations => {
           tool_name: props.toolName,
           status: props.status,
           duration_ms: props.durationMs,
-          ...(props.errorTag !== undefined && { error_tag: props.errorTag })
+          ...(props.errorTag !== undefined && { error_tag: props.errorTag }),
+          ...(props.inputBytes !== undefined && { input_bytes: props.inputBytes }),
+          ...(props.outputBytes !== undefined && { output_bytes: props.outputBytes }),
+          ...(props.editMode !== undefined && { edit_mode: props.editMode })
         }
       })
     },

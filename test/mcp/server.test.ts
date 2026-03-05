@@ -249,7 +249,7 @@ describe("TOOL_DEFINITIONS", () => {
       expect(tools).toContain("list_documents")
       expect(tools).toContain("get_document")
       expect(tools).toContain("create_document")
-      expect(tools).toContain("update_document")
+      expect(tools).toContain("edit_document")
       expect(tools).toContain("delete_document")
       expect(tools).toContain("upload_file")
       expect(tools).toContain("list_persons")

@@ -15,6 +15,9 @@ export type ToolCalledProps = {
   readonly status: "success" | "error"
   readonly errorTag?: string | undefined
   readonly durationMs: number
+  readonly inputBytes?: number | undefined
+  readonly outputBytes?: number | undefined
+  readonly editMode?: string | undefined
 }
 
 export interface TelemetryOperations {

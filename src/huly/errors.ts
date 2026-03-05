@@ -22,7 +22,13 @@ import { HulyAuthError, HulyConnectionError, HulyError } from "./errors-base.js"
 import { EventNotFoundError, RecurringEventNotFoundError } from "./errors-calendar.js"
 import { CardNotFoundError, CardSpaceNotFoundError, MasterTagNotFoundError } from "./errors-cards.js"
 import { InvalidPersonUuidError, PersonNotFoundError } from "./errors-contacts.js"
-import { DocumentNotFoundError, TeamspaceNotFoundError } from "./errors-documents.js"
+import {
+  DocumentEmptyContentError,
+  DocumentNotFoundError,
+  DocumentTextMultipleMatchesError,
+  DocumentTextNotFoundError,
+  TeamspaceNotFoundError
+} from "./errors-documents.js"
 import {
   AttachmentNotFoundError,
   BYTES_PER_MB,
@@ -72,7 +78,10 @@ export {
   ChannelNotFoundError,
   CommentNotFoundError,
   ComponentNotFoundError,
+  DocumentEmptyContentError,
   DocumentNotFoundError,
+  DocumentTextMultipleMatchesError,
+  DocumentTextNotFoundError,
   EventNotFoundError,
   FileFetchError,
   FileNotFoundError,
@@ -128,6 +137,9 @@ export type HulyDomainError =
   | FileFetchError
   | TeamspaceNotFoundError
   | DocumentNotFoundError
+  | DocumentTextNotFoundError
+  | DocumentTextMultipleMatchesError
+  | DocumentEmptyContentError
   | CommentNotFoundError
   | MilestoneNotFoundError
   | ChannelNotFoundError
@@ -178,6 +190,9 @@ export const HulyDomainError: Schema.Union<
     typeof FileFetchError,
     typeof TeamspaceNotFoundError,
     typeof DocumentNotFoundError,
+    typeof DocumentTextNotFoundError,
+    typeof DocumentTextMultipleMatchesError,
+    typeof DocumentEmptyContentError,
     typeof CommentNotFoundError,
     typeof MilestoneNotFoundError,
     typeof ChannelNotFoundError,
@@ -224,6 +239,9 @@ export const HulyDomainError: Schema.Union<
   FileFetchError,
   TeamspaceNotFoundError,
   DocumentNotFoundError,
+  DocumentTextNotFoundError,
+  DocumentTextMultipleMatchesError,
+  DocumentEmptyContentError,
   CommentNotFoundError,
   MilestoneNotFoundError,
   ChannelNotFoundError,

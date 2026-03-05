@@ -133,6 +133,59 @@ describe("createPostHogTelemetry", () => {
       expect(call.properties.error_tag).toBe("HulyConnectionError")
       expect(call.properties.status).toBe("error")
     })
+
+    it("includes input_bytes and output_bytes when provided", () => {
+      const telemetry = createPostHogTelemetry(false)
+      telemetry.toolCalled({
+        toolName: "edit_document",
+        status: "success",
+        durationMs: 50,
+        inputBytes: 1234,
+        outputBytes: 567
+      })
+
+      const call = mockCapture.mock.calls[0][0]
+      expect(call.properties.input_bytes).toBe(1234)
+      expect(call.properties.output_bytes).toBe(567)
+    })
+
+    it("omits input_bytes and output_bytes when not provided", () => {
+      const telemetry = createPostHogTelemetry(false)
+      telemetry.toolCalled({
+        toolName: "list_issues",
+        status: "success",
+        durationMs: 10
+      })
+
+      const call = mockCapture.mock.calls[0][0]
+      expect(call.properties).not.toHaveProperty("input_bytes")
+      expect(call.properties).not.toHaveProperty("output_bytes")
+    })
+
+    it("includes edit_mode when provided", () => {
+      const telemetry = createPostHogTelemetry(false)
+      telemetry.toolCalled({
+        toolName: "edit_document",
+        status: "success",
+        durationMs: 30,
+        editMode: "search_and_replace"
+      })
+
+      const call = mockCapture.mock.calls[0][0]
+      expect(call.properties.edit_mode).toBe("search_and_replace")
+    })
+
+    it("omits edit_mode when not provided", () => {
+      const telemetry = createPostHogTelemetry(false)
+      telemetry.toolCalled({
+        toolName: "list_issues",
+        status: "success",
+        durationMs: 10
+      })
+
+      const call = mockCapture.mock.calls[0][0]
+      expect(call.properties).not.toHaveProperty("edit_mode")
+    })
   })
 
   describe("shutdown", () => {

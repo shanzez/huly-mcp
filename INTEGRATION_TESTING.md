@@ -111,6 +111,16 @@ Key response fields used by the test script for entity IDs:
 | send_channel_message | `.id` |
 | add_thread_reply | `.id` |
 
+## MCP_AUTO_EXIT and In-Flight Request Draining
+
+`MCP_AUTO_EXIT=true` causes the server to exit when stdin closes. The server **drains in-flight tool calls before shutting down** — i.e., if a tool handler is mid-execution when stdin closes, the server waits (up to 30s) for it to complete and write its response before proceeding with shutdown.
+
+This matters for operations that make HTTP round-trips to Huly's collaborator service (e.g., `edit_document` with content changes calls `updateMarkup`). Without draining, the stdin-close event would race against the HTTP call, and the response would be lost even though the mutation succeeded on the server.
+
+**For script authors**: the standard `printf '%s\n%s\n' | node` pattern works correctly for all tools, including slow ones. No need for `sleep` workarounds.
+
+**Implementation**: `src/mcp/server.ts` — `createMcpServer` tracks in-flight requests with a counter. The `cleanup` handler (stdin close / SIGINT / SIGTERM) calls `drainInflight()` before resuming the shutdown fiber.
+
 ## Eventual Consistency
 
 Huly REST API is eventually consistent. Reads immediately after writes may return stale data. The full test suite avoids read-after-write verification within the same entity (each tool call is a separate connection). For manual testing with update-then-read:

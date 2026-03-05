@@ -107,7 +107,30 @@ export const CreateDocumentParamsSchema = Schema.Struct({
 
 export type CreateDocumentParams = Schema.Schema.Type<typeof CreateDocumentParamsSchema>
 
-export const UpdateDocumentParamsSchema = Schema.Struct({
+/**
+ * Edit document parameters — supports two mutually exclusive content modes:
+ *
+ * 1. Full replace: provide `content` to overwrite the entire document body.
+ * 2. Search-and-replace: provide `old_text` + `new_text` to perform a targeted edit.
+ *
+ * NOT SDK PARITY — Intentional design divergence.
+ *
+ * The Huly SDK only supports whole-document read (getMarkup) and whole-document
+ * write (updateMarkup). There is no partial/patch API.
+ *
+ * The search-and-replace mode (old_text/new_text) is inspired by Claude Code's
+ * Edit tool, to avoid forcing the calling agent to send full document content on
+ * every edit. The server performs read-modify-write internally using SDK primitives.
+ *
+ * The old_text/new_text contract mirrors Claude Code's Edit tool:
+ * - old_text must match exactly (no regex)
+ * - Multiple matches error unless replace_all is set
+ * - Empty new_text deletes the matched text
+ * - Empty old_text is an error (use create_document for new content)
+ *
+ * Agents familiar with Claude Code's Edit tool can use the same mental model.
+ */
+const EditDocumentParamsBase = Schema.Struct({
   teamspace: TeamspaceIdentifier.annotations({
     description: "Teamspace name or ID"
   }),
@@ -118,14 +141,46 @@ export const UpdateDocumentParamsSchema = Schema.Struct({
     description: "New document title"
   })),
   content: Schema.optional(Schema.String.annotations({
-    description: "New document content (markdown supported)"
+    description: "Full replacement content (markdown). Mutually exclusive with old_text/new_text."
+  })),
+  old_text: Schema.optional(Schema.String.annotations({
+    description: "Exact text to find in the document. Must be non-empty. Mutually exclusive with content."
+  })),
+  new_text: Schema.optional(Schema.String.annotations({
+    description: "Replacement text. Empty string deletes the matched text. Required when old_text is provided."
+  })),
+  replace_all: Schema.optional(Schema.Boolean.annotations({
+    description: "Replace all occurrences of old_text (default: false). Only used with old_text/new_text."
   }))
-}).annotations({
-  title: "UpdateDocumentParams",
-  description: "Parameters for updating a document"
 })
 
-export type UpdateDocumentParams = Schema.Schema.Type<typeof UpdateDocumentParamsSchema>
+export const EditDocumentParamsSchema = EditDocumentParamsBase.pipe(
+  Schema.filter((params) => {
+    const hasContent = params.content !== undefined
+    const hasOldText = params.old_text !== undefined
+    const hasNewText = params.new_text !== undefined
+
+    if (hasContent && (hasOldText || hasNewText)) {
+      return "Cannot provide both 'content' (full replace) and 'old_text'/'new_text' (search-and-replace). Use one mode or the other."
+    }
+
+    if (hasOldText !== hasNewText) {
+      return "Both 'old_text' and 'new_text' must be provided together for search-and-replace mode."
+    }
+
+    if (hasOldText && params.old_text.trim() === "") {
+      return "old_text must be non-empty. To create a new document, use create_document."
+    }
+
+    return undefined
+  })
+).annotations({
+  title: "EditDocumentParams",
+  description:
+    "Edit a document. Two content modes (mutually exclusive): (1) 'content' for full replace, (2) 'old_text' + 'new_text' for targeted search-and-replace. Also supports renaming via 'title'."
+})
+
+export type EditDocumentParams = Schema.Schema.Type<typeof EditDocumentParamsSchema>
 
 export const DeleteDocumentParamsSchema = Schema.Struct({
   teamspace: TeamspaceIdentifier.annotations({
@@ -232,7 +287,7 @@ export const deleteTeamspaceParamsJsonSchema = JSONSchema.make(DeleteTeamspacePa
 export const listDocumentsParamsJsonSchema = JSONSchema.make(ListDocumentsParamsSchema)
 export const getDocumentParamsJsonSchema = JSONSchema.make(GetDocumentParamsSchema)
 export const createDocumentParamsJsonSchema = JSONSchema.make(CreateDocumentParamsSchema)
-export const updateDocumentParamsJsonSchema = JSONSchema.make(UpdateDocumentParamsSchema)
+export const editDocumentParamsJsonSchema = JSONSchema.make(EditDocumentParamsSchema)
 export const deleteDocumentParamsJsonSchema = JSONSchema.make(DeleteDocumentParamsSchema)
 
 export const parseListTeamspacesParams = Schema.decodeUnknown(ListTeamspacesParamsSchema)
@@ -243,7 +298,7 @@ export const parseDeleteTeamspaceParams = Schema.decodeUnknown(DeleteTeamspacePa
 export const parseListDocumentsParams = Schema.decodeUnknown(ListDocumentsParamsSchema)
 export const parseGetDocumentParams = Schema.decodeUnknown(GetDocumentParamsSchema)
 export const parseCreateDocumentParams = Schema.decodeUnknown(CreateDocumentParamsSchema)
-export const parseUpdateDocumentParams = Schema.decodeUnknown(UpdateDocumentParamsSchema)
+export const parseEditDocumentParams = Schema.decodeUnknown(EditDocumentParamsSchema)
 export const parseDeleteDocumentParams = Schema.decodeUnknown(DeleteDocumentParamsSchema)
 
 // No codec needed — internal type, not used for runtime validation
@@ -252,7 +307,7 @@ export interface CreateDocumentResult {
   readonly title: string
 }
 
-export interface UpdateDocumentResult {
+export interface EditDocumentResult {
   readonly id: DocumentId
   readonly updated: boolean
 }

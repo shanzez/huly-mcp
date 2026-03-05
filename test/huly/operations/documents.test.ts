@@ -4,17 +4,23 @@ import type { Document as HulyDocument, Teamspace as HulyTeamspace } from "@hcen
 import { Effect } from "effect"
 import { expect } from "vitest"
 import { HulyClient, type HulyClientOperations } from "../../../src/huly/client.js"
-import type { DocumentNotFoundError, TeamspaceNotFoundError } from "../../../src/huly/errors.js"
+import type {
+  DocumentEmptyContentError,
+  DocumentNotFoundError,
+  DocumentTextMultipleMatchesError,
+  DocumentTextNotFoundError,
+  TeamspaceNotFoundError
+} from "../../../src/huly/errors.js"
 import {
   createDocument,
   createTeamspace,
   deleteDocument,
   deleteTeamspace,
+  editDocument,
   getDocument,
   getTeamspace,
   listDocuments,
   listTeamspaces,
-  updateDocument,
   updateTeamspace
 } from "../../../src/huly/operations/documents.js"
 import { documentIdentifier, teamspaceIdentifier } from "../../helpers/brands.js"
@@ -67,6 +73,7 @@ interface MockConfig {
   captureCreateDoc?: { attributes?: Record<string, unknown>; id?: string }
   captureUpdateDoc?: { operations?: Record<string, unknown> }
   captureUploadMarkup?: { markup?: string }
+  captureUpdateMarkup?: { markup?: string }
   captureRemoveDoc?: { id?: string }
 }
 
@@ -172,6 +179,19 @@ const createTestLayerWithMocks = (config: MockConfig) => {
     return Effect.succeed("markup-ref-123")
   }) as unknown as HulyClientOperations["uploadMarkup"]
 
+  // eslint-disable-next-line no-restricted-syntax -- mock function signature (unknown params) doesn't overlap with typed signature
+  const updateMarkupImpl: HulyClientOperations["updateMarkup"] = ((
+    _objectClass: unknown,
+    _objectId: unknown,
+    _objectAttr: unknown,
+    markup: unknown
+  ) => {
+    if (config.captureUpdateMarkup) {
+      config.captureUpdateMarkup.markup = markup as string
+    }
+    return Effect.succeed(undefined)
+  }) as unknown as HulyClientOperations["updateMarkup"]
+
   const removeDocImpl: HulyClientOperations["removeDoc"] = ((
     _class: unknown,
     _space: unknown,
@@ -190,6 +210,7 @@ const createTestLayerWithMocks = (config: MockConfig) => {
     createDoc: createDocImpl,
     updateDoc: updateDocImpl,
     uploadMarkup: uploadMarkupImpl,
+    updateMarkup: updateMarkupImpl,
     removeDoc: removeDocImpl
   })
 }
@@ -593,9 +614,8 @@ describe("createDocument", () => {
   })
 })
 
-describe("updateDocument", () => {
-  describe("basic functionality", () => {
-    // test-revizorro: approved
+describe("editDocument", () => {
+  describe("full replace mode", () => {
     it.effect("updates document title", () =>
       Effect.gen(function*() {
         const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
@@ -612,7 +632,7 @@ describe("updateDocument", () => {
           captureUpdateDoc
         })
 
-        const result = yield* updateDocument({
+        const result = yield* editDocument({
           teamspace: teamspaceIdentifier("My Docs"),
           document: documentIdentifier("Old Title"),
           title: "New Title"
@@ -623,8 +643,7 @@ describe("updateDocument", () => {
         expect(captureUpdateDoc.operations?.title).toBe("New Title")
       }))
 
-    // test-revizorro: approved
-    it.effect("updates document content", () =>
+    it.effect("replaces full document content", () =>
       Effect.gen(function*() {
         const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
         const doc = makeDocument({
@@ -642,7 +661,7 @@ describe("updateDocument", () => {
           captureUploadMarkup
         })
 
-        yield* updateDocument({
+        yield* editDocument({
           teamspace: teamspaceIdentifier("My Docs"),
           document: documentIdentifier("Test Doc"),
           content: "# Updated Content"
@@ -652,7 +671,6 @@ describe("updateDocument", () => {
         expect(captureUpdateDoc.operations?.content).toBe("markup-ref-123")
       }))
 
-    // test-revizorro: approved
     it.effect("clears content when empty string provided", () =>
       Effect.gen(function*() {
         const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
@@ -670,7 +688,7 @@ describe("updateDocument", () => {
           captureUpdateDoc
         })
 
-        yield* updateDocument({
+        yield* editDocument({
           teamspace: teamspaceIdentifier("My Docs"),
           document: documentIdentifier("Test Doc"),
           content: ""
@@ -679,7 +697,6 @@ describe("updateDocument", () => {
         expect(captureUpdateDoc.operations?.content).toBeNull()
       }))
 
-    // test-revizorro: approved
     it.effect("returns updated=false when no fields provided", () =>
       Effect.gen(function*() {
         const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
@@ -694,7 +711,7 @@ describe("updateDocument", () => {
           documents: [doc]
         })
 
-        const result = yield* updateDocument({
+        const result = yield* editDocument({
           teamspace: teamspaceIdentifier("My Docs"),
           document: documentIdentifier("Test Doc")
         }).pipe(Effect.provide(testLayer))
@@ -703,8 +720,7 @@ describe("updateDocument", () => {
         expect(result.updated).toBe(false)
       }))
 
-    // test-revizorro: approved
-    it.effect("updates multiple fields at once", () =>
+    it.effect("updates title and full content at once", () =>
       Effect.gen(function*() {
         const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
         const doc = makeDocument({
@@ -722,7 +738,7 @@ describe("updateDocument", () => {
           captureUploadMarkup
         })
 
-        const result = yield* updateDocument({
+        const result = yield* editDocument({
           teamspace: teamspaceIdentifier("My Docs"),
           document: documentIdentifier("Old Title"),
           title: "New Title",
@@ -737,14 +753,225 @@ describe("updateDocument", () => {
       }))
   })
 
+  describe("search-and-replace mode", () => {
+    it.effect("replaces single occurrence", () =>
+      Effect.gen(function*() {
+        const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
+        const doc = makeDocument({
+          _id: "doc-1" as Ref<HulyDocument>,
+          title: "Test Doc",
+          space: "ts-1" as Ref<HulyTeamspace>,
+          content: "markup-id-1" as MarkupBlobRef
+        })
+        const captureUpdateMarkup: MockConfig["captureUpdateMarkup"] = {}
+
+        const testLayer = createTestLayerWithMocks({
+          teamspaces: [teamspace],
+          documents: [doc],
+          markupContent: { "markup-id-1": "Hello world, this is a test." },
+          captureUpdateMarkup
+        })
+
+        const result = yield* editDocument({
+          teamspace: teamspaceIdentifier("My Docs"),
+          document: documentIdentifier("Test Doc"),
+          old_text: "world",
+          new_text: "universe"
+        }).pipe(Effect.provide(testLayer))
+
+        expect(result.updated).toBe(true)
+        expect(captureUpdateMarkup.markup).toBe("Hello universe, this is a test.")
+      }))
+
+    it.effect("deletes text when new_text is empty", () =>
+      Effect.gen(function*() {
+        const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
+        const doc = makeDocument({
+          _id: "doc-1" as Ref<HulyDocument>,
+          title: "Test Doc",
+          space: "ts-1" as Ref<HulyTeamspace>,
+          content: "markup-id-1" as MarkupBlobRef
+        })
+        const captureUpdateMarkup: MockConfig["captureUpdateMarkup"] = {}
+
+        const testLayer = createTestLayerWithMocks({
+          teamspaces: [teamspace],
+          documents: [doc],
+          markupContent: { "markup-id-1": "Remove this section please." },
+          captureUpdateMarkup
+        })
+
+        const result = yield* editDocument({
+          teamspace: teamspaceIdentifier("My Docs"),
+          document: documentIdentifier("Test Doc"),
+          old_text: "this section ",
+          new_text: ""
+        }).pipe(Effect.provide(testLayer))
+
+        expect(result.updated).toBe(true)
+        expect(captureUpdateMarkup.markup).toBe("Remove please.")
+      }))
+
+    it.effect("replaces all occurrences when replace_all is true", () =>
+      Effect.gen(function*() {
+        const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
+        const doc = makeDocument({
+          _id: "doc-1" as Ref<HulyDocument>,
+          title: "Test Doc",
+          space: "ts-1" as Ref<HulyTeamspace>,
+          content: "markup-id-1" as MarkupBlobRef
+        })
+        const captureUpdateMarkup: MockConfig["captureUpdateMarkup"] = {}
+
+        const testLayer = createTestLayerWithMocks({
+          teamspaces: [teamspace],
+          documents: [doc],
+          markupContent: { "markup-id-1": "foo bar foo baz foo" },
+          captureUpdateMarkup
+        })
+
+        const result = yield* editDocument({
+          teamspace: teamspaceIdentifier("My Docs"),
+          document: documentIdentifier("Test Doc"),
+          old_text: "foo",
+          new_text: "qux",
+          replace_all: true
+        }).pipe(Effect.provide(testLayer))
+
+        expect(result.updated).toBe(true)
+        expect(captureUpdateMarkup.markup).toBe("qux bar qux baz qux")
+      }))
+
+    it.effect("combines title rename with search-and-replace", () =>
+      Effect.gen(function*() {
+        const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
+        const doc = makeDocument({
+          _id: "doc-1" as Ref<HulyDocument>,
+          title: "Old Title",
+          space: "ts-1" as Ref<HulyTeamspace>,
+          content: "markup-id-1" as MarkupBlobRef
+        })
+        const captureUpdateDoc: MockConfig["captureUpdateDoc"] = {}
+        const captureUpdateMarkup: MockConfig["captureUpdateMarkup"] = {}
+
+        const testLayer = createTestLayerWithMocks({
+          teamspaces: [teamspace],
+          documents: [doc],
+          markupContent: { "markup-id-1": "Some content here." },
+          captureUpdateDoc,
+          captureUpdateMarkup
+        })
+
+        const result = yield* editDocument({
+          teamspace: teamspaceIdentifier("My Docs"),
+          document: documentIdentifier("Old Title"),
+          title: "New Title",
+          old_text: "content",
+          new_text: "text"
+        }).pipe(Effect.provide(testLayer))
+
+        expect(result.updated).toBe(true)
+        expect(captureUpdateDoc.operations?.title).toBe("New Title")
+        expect(captureUpdateMarkup.markup).toBe("Some text here.")
+      }))
+  })
+
+  describe("search-and-replace errors", () => {
+    it.effect("returns DocumentTextNotFoundError when old_text not found", () =>
+      Effect.gen(function*() {
+        const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
+        const doc = makeDocument({
+          _id: "doc-1" as Ref<HulyDocument>,
+          title: "Test Doc",
+          space: "ts-1" as Ref<HulyTeamspace>,
+          content: "markup-id-1" as MarkupBlobRef
+        })
+
+        const testLayer = createTestLayerWithMocks({
+          teamspaces: [teamspace],
+          documents: [doc],
+          markupContent: { "markup-id-1": "Hello world." }
+        })
+
+        const error = yield* Effect.flip(
+          editDocument({
+            teamspace: teamspaceIdentifier("My Docs"),
+            document: documentIdentifier("Test Doc"),
+            old_text: "nonexistent text",
+            new_text: "replacement"
+          }).pipe(Effect.provide(testLayer))
+        )
+
+        expect(error._tag).toBe("DocumentTextNotFoundError")
+        expect((error as DocumentTextNotFoundError).searchText).toBe("nonexistent text")
+      }))
+
+    it.effect("returns DocumentTextMultipleMatchesError when multiple matches without replace_all", () =>
+      Effect.gen(function*() {
+        const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
+        const doc = makeDocument({
+          _id: "doc-1" as Ref<HulyDocument>,
+          title: "Test Doc",
+          space: "ts-1" as Ref<HulyTeamspace>,
+          content: "markup-id-1" as MarkupBlobRef
+        })
+
+        const testLayer = createTestLayerWithMocks({
+          teamspaces: [teamspace],
+          documents: [doc],
+          markupContent: { "markup-id-1": "foo bar foo baz foo" }
+        })
+
+        const error = yield* Effect.flip(
+          editDocument({
+            teamspace: teamspaceIdentifier("My Docs"),
+            document: documentIdentifier("Test Doc"),
+            old_text: "foo",
+            new_text: "qux"
+          }).pipe(Effect.provide(testLayer))
+        )
+
+        expect(error._tag).toBe("DocumentTextMultipleMatchesError")
+        expect((error as DocumentTextMultipleMatchesError).matchCount).toBe(3)
+        expect((error as DocumentTextMultipleMatchesError).searchText).toBe("foo")
+      }))
+
+    it.effect("returns DocumentEmptyContentError when document has no content", () =>
+      Effect.gen(function*() {
+        const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
+        const doc = makeDocument({
+          _id: "doc-1" as Ref<HulyDocument>,
+          title: "Empty Doc",
+          space: "ts-1" as Ref<HulyTeamspace>,
+          content: null
+        })
+
+        const testLayer = createTestLayerWithMocks({
+          teamspaces: [teamspace],
+          documents: [doc]
+        })
+
+        const error = yield* Effect.flip(
+          editDocument({
+            teamspace: teamspaceIdentifier("My Docs"),
+            document: documentIdentifier("Empty Doc"),
+            old_text: "anything",
+            new_text: "replacement"
+          }).pipe(Effect.provide(testLayer))
+        )
+
+        expect(error._tag).toBe("DocumentEmptyContentError")
+        expect((error as DocumentEmptyContentError).identifier).toBe("Empty Doc")
+      }))
+  })
+
   describe("error handling", () => {
-    // test-revizorro: approved
     it.effect("returns TeamspaceNotFoundError when teamspace doesn't exist", () =>
       Effect.gen(function*() {
         const testLayer = createTestLayerWithMocks({ teamspaces: [], documents: [] })
 
         const error = yield* Effect.flip(
-          updateDocument({
+          editDocument({
             teamspace: teamspaceIdentifier("Nonexistent"),
             document: documentIdentifier("Doc"),
             title: "New Title"
@@ -754,7 +981,6 @@ describe("updateDocument", () => {
         expect(error._tag).toBe("TeamspaceNotFoundError")
       }))
 
-    // test-revizorro: approved
     it.effect("returns DocumentNotFoundError when document doesn't exist", () =>
       Effect.gen(function*() {
         const teamspace = makeTeamspace({ _id: "ts-1" as Ref<HulyTeamspace>, name: "My Docs" })
@@ -762,7 +988,7 @@ describe("updateDocument", () => {
         const testLayer = createTestLayerWithMocks({ teamspaces: [teamspace], documents: [] })
 
         const error = yield* Effect.flip(
-          updateDocument({
+          editDocument({
             teamspace: teamspaceIdentifier("My Docs"),
             document: documentIdentifier("Nonexistent"),
             title: "New Title"

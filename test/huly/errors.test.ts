@@ -661,6 +661,12 @@ describe("Huly Errors", () => {
               return `teamspace:${error.identifier}`
             case "DocumentNotFoundError":
               return `document:${error.identifier}`
+            case "DocumentTextNotFoundError":
+              return `doctext:${error.searchText}`
+            case "DocumentTextMultipleMatchesError":
+              return `docmulti:${error.matchCount}`
+            case "DocumentEmptyContentError":
+              return `docempty:${error.identifier}`
             case "CommentNotFoundError":
               return `comment:${error.commentId}`
             case "MilestoneNotFoundError":

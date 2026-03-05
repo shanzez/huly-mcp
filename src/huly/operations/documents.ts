@@ -1,9 +1,6 @@
 /**
  * Document domain operations for Huly MCP server.
  *
- * Provides typed operations for querying and managing documents and teamspaces from Huly platform.
- * Operations use HulyClient service and return typed domain objects.
- *
  * @module
  */
 import {
@@ -33,7 +30,6 @@ import type {
   ListTeamspacesParams,
   ListTeamspacesResult,
   TeamspaceSummary,
-  UpdateDocumentParams,
   UpdateTeamspaceParams
 } from "../../domain/schemas.js"
 import type {
@@ -42,7 +38,6 @@ import type {
   DeleteDocumentResult,
   DeleteTeamspaceResult,
   GetTeamspaceResult,
-  UpdateDocumentResult,
   UpdateTeamspaceResult
 } from "../../domain/schemas/documents.js"
 import { DocumentId, TeamspaceId } from "../../domain/schemas/shared.js"
@@ -52,6 +47,8 @@ import { escapeLikeWildcards } from "./query-helpers.js"
 import { clampLimit, findByNameOrId, toRef } from "./shared.js"
 
 import { core, documentPlugin } from "../huly-plugins.js"
+
+export { editDocument } from "./documents-edit.js"
 
 type ListTeamspacesError = HulyClientError
 
@@ -81,11 +78,6 @@ type GetDocumentError =
 type CreateDocumentError =
   | HulyClientError
   | TeamspaceNotFoundError
-
-type UpdateDocumentError =
-  | HulyClientError
-  | TeamspaceNotFoundError
-  | DocumentNotFoundError
 
 type DeleteDocumentError =
   | HulyClientError
@@ -471,75 +463,6 @@ export const createDocument = (
     )
 
     return { id: DocumentId.make(documentId), title: params.title }
-  })
-
-// --- Update Document Operation ---
-
-/**
- * Update an existing document in a teamspace.
- *
- * Updates only provided fields:
- * - title: New title
- * - content: New markdown content (uploaded via uploadMarkup)
- *
- * @param params - Update document parameters
- * @returns Updated document id and success flag
- * @throws TeamspaceNotFoundError if teamspace doesn't exist
- * @throws DocumentNotFoundError if document doesn't exist
- */
-export const updateDocument = (
-  params: UpdateDocumentParams
-): Effect.Effect<UpdateDocumentResult, UpdateDocumentError, HulyClient> =>
-  Effect.gen(function*() {
-    const { client, doc, teamspace } = yield* findTeamspaceAndDocument(params)
-
-    const updateOps: DocumentUpdate<HulyDocument> = {}
-    let contentUpdatedInPlace = false
-
-    if (params.title !== undefined) {
-      updateOps.title = params.title
-    }
-
-    if (params.content !== undefined) {
-      if (params.content.trim() === "") {
-        updateOps.content = null
-      } else if (doc.content) {
-        // Document already has content - update in place
-        yield* client.updateMarkup(
-          documentPlugin.class.Document,
-          doc._id,
-          "content",
-          params.content,
-          "markdown"
-        )
-        contentUpdatedInPlace = true
-      } else {
-        // Document has no content yet - create new
-        const contentMarkupRef = yield* client.uploadMarkup(
-          documentPlugin.class.Document,
-          doc._id,
-          "content",
-          params.content,
-          "markdown"
-        )
-        updateOps.content = contentMarkupRef
-      }
-    }
-
-    if (Object.keys(updateOps).length === 0 && !contentUpdatedInPlace) {
-      return { id: DocumentId.make(doc._id), updated: false }
-    }
-
-    if (Object.keys(updateOps).length > 0) {
-      yield* client.updateDoc(
-        documentPlugin.class.Document,
-        teamspace._id,
-        doc._id,
-        updateOps
-      )
-    }
-
-    return { id: DocumentId.make(doc._id), updated: true }
   })
 
 // --- Delete Document Operation ---
