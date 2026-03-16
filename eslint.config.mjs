@@ -8,6 +8,19 @@ import simpleImportSort from "eslint-plugin-simple-import-sort"
 import importX from "eslint-plugin-import-x"
 import sortDestructureKeys from "eslint-plugin-sort-destructure-keys"
 
+const doubleAssertionSelector = {
+  selector: "TSAsExpression > TSAsExpression",
+  message: "Double type assertion (as A as B). Requires eslint-disable with justification."
+}
+
+const dateBanSelectors = [{
+  selector: "NewExpression[callee.name='Date']",
+  message: "new Date() is banned. Use Effect DateTime.now or DateTime.unsafeNow instead."
+}, {
+  selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+  message: "Date.now() is banned. Use Effect Clock.currentTimeMillis or DateTime.now instead."
+}]
+
 export default [
   {
     ignores: ["**/dist", "**/build", "**/*.md", "**/.reference"]
@@ -82,15 +95,9 @@ export default [
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
       "@typescript-eslint/no-unnecessary-condition": "error",
-      "no-restricted-syntax": ["error", {
-        selector: "TSAsExpression > TSAsExpression",
-        message: "Double type assertion (as A as B). Requires eslint-disable with justification."
-      }, {
-        selector: "NewExpression[callee.name='Date']",
-        message: "new Date() is banned. Use Effect DateTime.now or DateTime.unsafeNow instead."
-      }, {
-        selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
-        message: "Date.now() is banned. Use Effect Clock.currentTimeMillis or DateTime.now instead."
+      "no-restricted-syntax": ["error", doubleAssertionSelector, ...dateBanSelectors, {
+        selector: "TSAsExpression:not([typeAnnotation.typeName.name='const'])",
+        message: "Type assertion (as T) is banned. Use Effect Schema decode, satisfies, or restructure code to avoid the cast. If truly unavoidable at an SDK boundary, add eslint-disable with justification."
       }],
 
       // Code quality
@@ -161,7 +168,9 @@ export default [
     rules: {
       "max-lines": "off",
       "no-magic-numbers": "off",
-      "functional/immutable-data": "off"
+      "functional/immutable-data": "off",
+      // Override: keep Date bans and double-assertion ban but exclude as T ban — test mocks need branded type casts.
+      "no-restricted-syntax": ["error", doubleAssertionSelector, ...dateBanSelectors]
     }
   }
 ]

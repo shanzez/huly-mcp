@@ -208,6 +208,7 @@ type WithIdentifier = PreviewDeletionParams & { identifier: string }
 export const previewDeletion = (
   params: PreviewDeletionParams
 ): Effect.Effect<DeletionImpact, PreviewDeletionError, HulyClient> => {
+  /* eslint-disable no-restricted-syntax -- see comment on WithIdentifier above */
   switch (params.entityType) {
     case "issue":
       return previewIssueDeletion(params as WithIdentifier)
@@ -218,4 +219,5 @@ export const previewDeletion = (
     case "milestone":
       return previewMilestoneDeletion(params as WithIdentifier)
   }
+  /* eslint-enable no-restricted-syntax */
 }

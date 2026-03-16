@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-syntax -- reverse enum maps: Object.entries loses numeric enum type, cast back is unavoidable */
 import type { MarkupRef } from "@hcengineering/api-client"
 import type { Person } from "@hcengineering/contact"
 import type { Class, Doc, Ref } from "@hcengineering/core"

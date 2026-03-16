@@ -154,6 +154,7 @@ export const createProject = (
       sequence: 0,
       // Huly SDK: defaultIssueStatus expects Ref<IssueStatus> but is set by the platform
       // on first issue creation. Empty string sentinel is safe for initial project creation.
+      // eslint-disable-next-line no-restricted-syntax -- see above
       defaultIssueStatus: "" as Ref<IssueStatus>,
       defaultTimeReportDay: TimeReportDayType.CurrentWorkDay,
       // tracker.ids.ClassingProjectType is the default classic tracker ProjectType.

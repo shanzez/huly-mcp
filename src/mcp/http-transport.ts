@@ -120,6 +120,7 @@ export const createMcpHandlers = (
       // property types (onmessage, send options) don't satisfy Transport under
       // exactOptionalPropertyTypes. SDK bug — safe because the class genuinely
       // implements the interface at runtime.
+      // eslint-disable-next-line no-restricted-syntax -- see above
       await server.connect(transport as Transport)
       await transport.handleRequest(req, res, req.body)
 

@@ -111,6 +111,7 @@ export const createTagCategory = (
       // Asset is a branded string type (Metadata<URL>) with no runtime constructor.
       // Empty string is the "no icon" sentinel; Huly UI renders a default icon.
       // Verified: Huly accepts "" without error (tested against v0.7.353).
+      // eslint-disable-next-line no-restricted-syntax -- see above
       icon: "" as Asset,
       label: params.label,
       targetClass,

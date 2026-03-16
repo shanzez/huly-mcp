@@ -2,7 +2,7 @@
 // These packages only expose CommonJS default exports; import() doesn't work at runtime.
 // All requires are collected here so consumers import typed values without eslint suppression.
 
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports -- CJS interop boundary */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports, no-restricted-syntax -- CJS interop boundary: require().default needs `as typeof import(…).default` */
 
 export const activity = require("@hcengineering/activity").default as typeof import("@hcengineering/activity").default
 export const attachment = require("@hcengineering/attachment")
@@ -23,4 +23,4 @@ export const task = require("@hcengineering/task").default as typeof import("@hc
 export const time = require("@hcengineering/time").default as typeof import("@hcengineering/time").default
 export const tracker = require("@hcengineering/tracker").default as typeof import("@hcengineering/tracker").default
 
-/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports */
+/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports, no-restricted-syntax */

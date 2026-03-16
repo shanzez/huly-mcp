@@ -229,6 +229,7 @@ export const createTestSuite = (
     yield* client.createDoc(
       testManagement.class.TestSuite,
       project._id,
+      // eslint-disable-next-line no-restricted-syntax -- Data<TestSuite> SDK boundary, no typed constructor
       suiteData as Data<TestSuite>,
       suiteId
     )
@@ -406,6 +407,7 @@ export const createTestCase = (
       toRef<Doc>(suite._id),
       toRef<Class<Doc>>(testManagement.class.TestSuite),
       "testCases",
+      // eslint-disable-next-line no-restricted-syntax -- AttachedData<TestCase> SDK boundary, no typed constructor
       attrs as AttachedData<TestCase>,
       caseId
     )
@@ -476,6 +478,7 @@ export const updateTestCase = (
       testManagement.class.TestCase,
       project._id,
       tc._id,
+      // eslint-disable-next-line no-restricted-syntax -- DocumentUpdate<TestCase> SDK boundary, no typed constructor
       ops as DocumentUpdate<TestCase>
     )
 

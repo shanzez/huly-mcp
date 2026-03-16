@@ -79,9 +79,11 @@ type ListDirectMessagesError = HulyClientError
 
 // SDK: SocialIdentityRef = Ref<SocialIdentity> & PersonId. PersonId lacks the Ref<> phantom brand (__ref).
 // Both are branded strings over the same runtime value; cast is safe but no single-step path exists.
+/* eslint-disable no-restricted-syntax -- PersonId → SocialIdentityRef: same branded string at runtime */
 const personIdsAsSocialIdentityRefs = (
   ids: Array<PersonId>
 ): Array<SocialIdentityRef> => ids as Array<SocialIdentityRef>
+/* eslint-enable no-restricted-syntax */
 
 // SDK: jsonToMarkup return type doesn't match Markup; cast contained here.
 const jsonAsMarkup: (json: ReturnType<typeof markdownToMarkup>) => Markup = jsonToMarkup

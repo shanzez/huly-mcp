@@ -16,6 +16,7 @@ import { escapeLikeWildcards } from "./query-helpers.js"
 
 // Huly SDK uses `Ref<T>` (a branded string) for entity references.
 // Our domain uses Effect Schema brands. No type-safe bridge exists; this is the boundary cast.
+// eslint-disable-next-line no-restricted-syntax -- see above
 export const toRef = <T extends Doc>(id: string): Ref<T> => id as Ref<T>
 
 // Huly API uses 0 as sentinel for "not set" on numeric fields like estimation and remainingTime.
@@ -63,6 +64,7 @@ export const validatePersonUuid = (uuid?: string): Effect.Effect<PersonUuid | un
   }
   // PersonUuid is a branded string type from @hcengineering/core.
   // After regex validation confirms UUID format, cast is safe.
+  // eslint-disable-next-line no-restricted-syntax -- see above
   return Effect.succeed(uuid as PersonUuid)
 }
 

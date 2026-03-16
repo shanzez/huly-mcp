@@ -59,6 +59,7 @@ import { contact, time, tracker } from "../huly-plugins.js"
 // SDK: Data<WorkSlot> requires calendar/user but server populates from auth context.
 const serverPopulatedCalendar = toRef<HulyCalendar>("")
 // PersonId = string & { __personId: true }; no SDK factory exists. Empty string is overwritten server-side.
+// eslint-disable-next-line no-restricted-syntax -- see above
 const serverPopulatedPersonId: CorePersonId = "" as CorePersonId
 
 // SDK: WorkSlot.user is typed PersonId, but Huly queries accept Ref<Person> for user lookup.

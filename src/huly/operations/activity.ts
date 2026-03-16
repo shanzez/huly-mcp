@@ -51,6 +51,7 @@ type ListMentionsError = HulyClientError
 
 // SDK: Data<Reaction> requires createBy (PersonId, branded string) but server populates from auth context.
 // PersonId = string & { __personId: true }; no SDK factory exists. Empty string is overwritten server-side.
+// eslint-disable-next-line no-restricted-syntax -- see above
 const serverPopulatedCreateBy: HulyReaction["createBy"] = "" as HulyReaction["createBy"]
 
 /**

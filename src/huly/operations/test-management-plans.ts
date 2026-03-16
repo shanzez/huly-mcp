@@ -186,6 +186,7 @@ export const addTestPlanItem = (
       plan._id,
       testManagement.class.TestPlan,
       "items",
+      // eslint-disable-next-line no-restricted-syntax -- AttachedData<TestPlanItem> SDK boundary cast
       itemAttrs as Parameters<typeof client.addCollection<TestPlan, TestPlanItem>>[5]
     )
     return { id: TestPlanItemId.make(itemId), added: true }

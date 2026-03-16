@@ -6,6 +6,7 @@
  * values of these types is via type assertion. These helpers centralize
  * the casts so test files stay clean.
  */
+/* eslint-disable no-restricted-syntax -- test brand factories: every function here is an intentional type assertion */
 
 // --- Effect Schema brands (src/domain/schemas/shared.ts) ---
 

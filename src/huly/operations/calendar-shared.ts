@@ -24,6 +24,7 @@ import { toRef } from "./shared.js"
 
 // SDK: HulyEvent["description"] is Markup | MarkupBlobRef | null; fetchMarkup expects MarkupBlobRef.
 // At runtime the value is always a MarkupBlobRef when non-empty; Markup (plain string) lacks the Ref<Blob> brand.
+// eslint-disable-next-line no-restricted-syntax -- see above
 export const descriptionAsMarkupRef = (desc: HulyEvent["description"]): MarkupBlobRef => desc as MarkupBlobRef
 
 // SDK: MarkupBlobRef (Ref<Blob>) is assignable to Markup (string); null maps to empty string.
@@ -35,6 +36,7 @@ export const emptyEventDescription: HulyEvent["description"] = ""
 
 // SDK: Data<Event> requires 'user' (PersonId, branded string) but server populates from auth context.
 // PersonId = string & { __personId: true }; no SDK factory exists. Empty string is overwritten server-side.
+// eslint-disable-next-line no-restricted-syntax -- see above
 export const serverPopulatedUser: HulyEvent["user"] = "" as HulyEvent["user"]
 
 // SDK: Visibility and HulyVisibility are identical string literal unions.

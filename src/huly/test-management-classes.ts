@@ -19,6 +19,7 @@ import type {
 // One `as Ref<Class<T>>` per class — unavoidable since there is no
 // runtime plugin registry to resolve these. Downstream code is fully
 // type-safe via the generics on findAll/createDoc/updateDoc.
+/* eslint-disable no-restricted-syntax -- string literal → Ref<Class<T>> SDK boundary, no constructor */
 export const testManagement = {
   class: {
     TestProject: "testManagement:class:TestProject" as Ref<Class<TestProject>>,
@@ -30,3 +31,4 @@ export const testManagement = {
     TestResult: "testManagement:class:TestResult" as Ref<Class<TestResult>>
   }
 } as const
+/* eslint-enable no-restricted-syntax */

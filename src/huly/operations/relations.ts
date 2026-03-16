@@ -73,6 +73,7 @@ export const addIssueRelation = (
 
     // DocumentUpdate<HulyIssue> cast needed on $push/$pull literals: TS cannot infer which arm
     // of the complex intersection type (Partial<Data<T>> & PushOptions<T> & ...) applies.
+    /* eslint-disable no-restricted-syntax -- see above */
     switch (params.relationType) {
       case "blocks": {
         if (hasRelation(target.blockedBy, source._id)) {
@@ -119,6 +120,7 @@ export const addIssueRelation = (
         return { ...result, added: true }
       }
     }
+    /* eslint-enable no-restricted-syntax */
   })
 
 export const removeIssueRelation = (
@@ -137,6 +139,7 @@ export const removeIssueRelation = (
 
     const result = { sourceIssue: source.identifier, targetIssue: target.identifier, relationType: params.relationType }
 
+    /* eslint-disable no-restricted-syntax -- see above */
     switch (params.relationType) {
       case "blocks": {
         if (!hasRelation(target.blockedBy, source._id)) {
@@ -182,6 +185,7 @@ export const removeIssueRelation = (
         return { ...result, removed: true }
       }
     }
+    /* eslint-enable no-restricted-syntax */
   })
 
 export const listIssueRelations = (

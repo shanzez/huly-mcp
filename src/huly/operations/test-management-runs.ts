@@ -251,6 +251,7 @@ export const createTestResult = (
       run._id,
       testManagement.class.TestRun,
       "results",
+      // eslint-disable-next-line no-restricted-syntax -- AttachedData<TestResult> SDK boundary cast
       resultAttrs as Parameters<typeof client.addCollection<TestRun, TestResult>>[5]
     )
     return { id: TestResultId.make(resultId), name, created: true }
@@ -344,6 +345,7 @@ export const runTestPlan = (
           runId,
           testManagement.class.TestRun,
           "results",
+          // eslint-disable-next-line no-restricted-syntax -- AttachedData<TestResult> SDK boundary cast
           attrs as Parameters<typeof client.addCollection<TestRun, TestResult>>[5]
         )
       }), { concurrency: BATCH_CONCURRENCY })
