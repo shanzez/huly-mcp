@@ -43,6 +43,22 @@ For every product type (interface, type alias, Schema struct), verify: can every
 
 All data crossing system boundaries (APIs, etc.) must be strongly typed — both inbound (decoding) and outbound (encoding), with Effect Schema. Flag any `any`, untyped fetch results, or raw JSON access.
 
+## No Bare Primitives for Domain Values
+
+Function signatures and type definitions must never use bare `string`, `number`, or `boolean` where a domain-specific type (union, branded, alias) exists or should exist. This applies to return types, parameters, map key/value types, schema fields, and struct fields.
+
+Examples:
+- A function returning `"ChPending" | "ChRunning" | "ChCompleted" | "ChFailed"` must have that union (or a named alias like `DagChildStatus`) as return type, not `string`
+- A function producing node IDs must return `DagNodeId`, not `string`
+- A timestamp field must use `number` only if no branded type like `Millis` exists; if one does, use it
+
+Symptoms to flag:
+- `(s: DomainType): string` — return type loses domain information
+- `ReadonlyMap<string, string>` where keys or values have known finite domains
+- `Schema.String` in schemas where the field has a known set of valid values (use `Schema.Literals`)
+- Bare `number` for quantities that have units or domain meaning (timestamps, indices, counts) when a branded/alias type exists
+- Type-narrowing helper that accepts a primitive and returns a type guard — the input might be unavoidable (external data), but document why
+
 ## Immutability
 
 No `let` for conditional assignment. Use `const` with:
