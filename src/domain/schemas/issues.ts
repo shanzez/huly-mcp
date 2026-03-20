@@ -69,7 +69,8 @@ export type PersonRef = Schema.Schema.Type<typeof PersonRefSchema>
 
 export const IssueSummarySchema = Schema.Struct({
   identifier: IssueIdentifier,
-  title: NonEmptyString,
+  // String, not NonEmptyString: Huly allows storing issues with empty titles
+  title: Schema.String,
   status: StatusName,
   priority: Schema.optional(IssuePrioritySchema),
   assignee: Schema.optional(PersonName),
@@ -85,7 +86,8 @@ export type IssueSummary = Schema.Schema.Type<typeof IssueSummarySchema>
 
 export const IssueSchema = Schema.Struct({
   identifier: IssueIdentifier,
-  title: NonEmptyString,
+  // String, not NonEmptyString: Huly allows storing issues with empty titles
+  title: Schema.String,
   description: Schema.optional(Schema.String),
   status: StatusName,
   priority: Schema.optional(IssuePrioritySchema),
