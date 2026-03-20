@@ -132,7 +132,9 @@ const updateReadme = (): void => {
   const before = content.substring(0, startIdx + startMarker.length)
   const after = content.substring(endIdx)
 
-  const newContent = `${before}\n${toolsSection}${after}`
+  const autoGenComment =
+    "<!-- AUTO-GENERATED from src/mcp/tools/ descriptions. Do not edit manually. Run `pnpm update-readme` to regenerate. -->"
+  const newContent = `${before}\n${autoGenComment}\n${toolsSection}${after}`
 
   writeFileSync(readmePath, newContent, "utf-8")
   console.log(`✅ README.md updated with ${allTools.length} tools in ${toolsByCategory.size} categories`)

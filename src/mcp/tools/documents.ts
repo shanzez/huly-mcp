@@ -126,7 +126,7 @@ export const documentTools: ReadonlyArray<RegisteredTool> = [
   {
     name: "create_document",
     description:
-      "Create a new document in a Huly teamspace. Content supports markdown formatting. Returns the created document id.",
+      "Create a new document in a Huly teamspace. Content supports full markdown including native Mermaid diagrams (```mermaid blocks render interactively in Huly UI). Returns the created document id.",
     category: CATEGORY,
     inputSchema: createDocumentParamsJsonSchema,
     handler: createToolHandler(
@@ -138,7 +138,7 @@ export const documentTools: ReadonlyArray<RegisteredTool> = [
   {
     name: "edit_document",
     description:
-      "Edit an existing Huly document. Two content modes (mutually exclusive): (1) 'content' for full replace, (2) 'old_text' + 'new_text' for targeted search-and-replace. Multiple matches error unless replace_all is true. Empty new_text deletes matched text. Also supports renaming via 'title'.",
+      "Edit an existing Huly document. Two content modes (mutually exclusive): (1) 'content' for full replace, (2) 'old_text' + 'new_text' for targeted search-and-replace. Multiple matches error unless replace_all is true. Empty new_text deletes matched text. Also supports renaming via 'title'. Content supports full markdown including native Mermaid diagrams.",
     category: CATEGORY,
     inputSchema: editDocumentParamsJsonSchema,
     handler: createToolHandler(
