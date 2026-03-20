@@ -418,3 +418,67 @@ MCP_TRANSPORT=http MCP_HTTP_PORT=8080 MCP_HTTP_HOST=0.0.0.0 npx -y @firfi/huly-m
 
 <!-- tools:end -->
 
+## Troubleshooting
+
+### Passwords with special characters
+
+If your Huly password contains characters like `*`, `%`, `!`, or `#`, passing it via the CLI `-e` flag may fail because the shell interprets these characters before they reach the process.
+
+**Solution**: Edit your MCP config file directly instead of using `claude mcp add -e`. In `~/.claude.json` (user scope) or `.mcp.json` (project scope), JSON handles all special characters natively:
+
+```json
+{
+  "mcpServers": {
+    "huly": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["path/to/dist/index.cjs"],
+      "env": {
+        "HULY_URL": "https://your-huly-instance.com",
+        "HULY_EMAIL": "you@example.com",
+        "HULY_PASSWORD": "p@ss*w0rd!#%",
+        "HULY_WORKSPACE": "your-workspace"
+      }
+    }
+  }
+}
+```
+
+Alternatively, use `HULY_TOKEN` instead of email/password to bypass password auth entirely (see [Environment Variables](#environment-variables)).
+
+### MCP client shows "Failed to reconnect"
+
+After changing MCP configuration, some clients (including Claude Code) require a full restart — not just a reconnect. Exit the application completely and reopen it.
+
+You can verify the connection works independently with:
+```bash
+claude mcp list  # Should show "Connected"
+```
+
+### Self-hosted Huly: account locked after failed login attempts
+
+Huly locks password login after 5 failed API authentication attempts. This commonly happens during initial setup when the password is misconfigured. The lock persists in the database across service restarts.
+
+**Symptoms**: `PasswordLoginLocked` error from the MCP server, and the Huly web UI shows "Password login is locked due to too many failed attempts. Please use an OTP login method to unlock your account." (OTP won't work without SMTP configured.)
+
+**Fix** — reset the lock counter in CockroachDB:
+
+```bash
+# Find your account UUID and check lock status
+docker exec -e PGPASSWORD=<your_cockroach_password> <cockroach_container> \
+  cockroach sql --host=localhost --user=<db_user> --database=defaultdb --insecure \
+  -e "SELECT uuid, failed_login_attempts FROM global_account.account;"
+
+# Reset the counter
+docker exec -e PGPASSWORD=<your_cockroach_password> <cockroach_container> \
+  cockroach sql --host=localhost --user=<db_user> --database=defaultdb --insecure \
+  -e "UPDATE global_account.account SET failed_login_attempts = 0 WHERE uuid = '<your_account_uuid>';"
+```
+
+The CockroachDB credentials can be found in your Huly `compose.yml` or via `docker exec <cockroach_container> env | grep COCKROACH`.
+
+### Windows-specific notes
+
+- **Bash wrapper scripts** (sourcing `.env` files) may not work reliably when launched by MCP clients on Windows. Prefer setting env vars directly in the MCP config JSON.
+- **Docker pulls over SSH** may fail on Windows due to credential manager issues. Pull images from the server desktop if needed.
+
