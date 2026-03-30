@@ -218,7 +218,7 @@ export const CreateIssueParamsSchema = Schema.Struct({
     })
   ),
   estimation: Schema.optional(PositiveNumber.annotations({
-    description: "Time estimation in hours"
+    description: "Time estimation in minutes"
   }))
 }).annotations({
   title: "CreateIssueParams",
@@ -258,7 +258,7 @@ export const UpdateIssueParamsSchema = Schema.Struct({
   ),
   estimation: Schema.optional(
     Schema.NullOr(PositiveNumber).annotations({
-      description: "Time estimation in hours, or null to clear"
+      description: "Time estimation in minutes, or null to clear"
     })
   )
 }).annotations({
