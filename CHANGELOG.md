@@ -1,5 +1,11 @@
 # @firfi/huly-mcp
 
+## 0.5.2
+
+### Patch Changes
+
+- fix: add uploadMarkup for milestone collaborative documents (#18), consistent guard and dual-write comment
+
 ## 0.5.1
 
 ### Patch Changes
