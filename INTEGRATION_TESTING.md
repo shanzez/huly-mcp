@@ -6,6 +6,16 @@
 pnpm build
 ```
 
+## Local Docker Setup Notes (OrbStack)
+
+The `.huly-local/docker-compose.override.yml` applies two fixes required on OrbStack:
+
+**nginx port 80**: `/etc/hosts` maps `nginx → 127.0.0.1`. Huly's `config.json` returns `http://nginx/_accounts` (internal Docker hostname) as `ACCOUNTS_URL`. Without port 80 exposed, `http://nginx` from the host hits `127.0.0.1:80` → connection refused. The override adds `"80:80"`.
+
+**redpanda tmpfs + mem_limit**: OrbStack's VM uses btrfs. Redpanda sets `abort_on_allocation_failure=true` and without a cgroup memory limit it sees the full ~15GB VM RAM, hits OOM at startup, and dies silently (exit 137). The override caps it at 1g and uses tmpfs to avoid the btrfs path.
+
+`HOST_ADDRESS=nginx` in `huly_v7.conf` is intentional — Docker-internal services construct URLs from it (`ACCOUNTS_URL=http://nginx/_accounts`). Do not change it to `localhost:8087`; that breaks internal container-to-container routing.
+
 ## Environment Variables
 
 ```bash
@@ -18,40 +28,29 @@ set -a && source .env.local && set +a
 # Required: HULY_URL, HULY_WORKSPACE, and either HULY_TOKEN or (HULY_EMAIL + HULY_PASSWORD)
 ```
 
-## Running from a Container (e.g., Claude Code sandbox)
+## Running from a Container (e.g., Claude Code devcontainer)
 
-When the test environment runs inside a container but Huly runs on the host via Docker, `localhost:8087` is unreachable. Huly's `/config.json` also hardcodes `localhost` in internal URLs (`ACCOUNTS_URL`, `COLLABORATOR_URL`, etc.), so simply changing `HULY_URL` isn't enough.
+When the test environment runs inside a container, `localhost:8087` is unreachable. Huly's `/config.json` also returns internal URLs pointing to `localhost:8087` (`ACCOUNTS_URL`, `COLLABORATOR_URL`, etc.), so simply changing `HULY_URL` isn't enough.
 
-**Fix**: monkey-patch `fetch` to rewrite `localhost:8087` → `host.docker.internal:8087`:
+**Fix**: Connect this container to the Huly Docker network and use a CJS preload patch that rewrites `localhost:8087` → `nginx` (the Docker service name) for both `fetch` and `ws` (WebSocket).
+
+### One-time setup
 
 ```bash
-cat > /tmp/patch-localhost.mjs << 'PATCH'
-const origFetch = globalThis.fetch;
-globalThis.fetch = function(url, ...args) {
-  if (typeof url === 'string') {
-    url = url.replace(/localhost:8087/g, 'host.docker.internal:8087');
-  } else if (url instanceof URL) {
-    if (url.hostname === 'localhost' && url.port === '8087') {
-      url = new URL(url.href.replace('localhost:8087', 'host.docker.internal:8087'));
-    }
-  } else if (url instanceof Request) {
-    url = new Request(url.url.replace(/localhost:8087/g, 'host.docker.internal:8087'), url);
-  }
-  return origFetch.call(this, url, ...args);
-};
-PATCH
+# From the HOST — find your container and the Huly network, then connect them:
+docker network ls | grep huly           # e.g., huly_v7_huly_net
+docker ps --format '{{.ID}} {{.Names}}' # find your devcontainer
+docker network connect <huly_network> <container_id>
 ```
 
-Then run with:
+### Running tests from the container
 
 ```bash
 set -a && source .env.local && set +a
-export HULY_URL=http://host.docker.internal:8087
-export NODE_OPTIONS="--import=/tmp/patch-localhost.mjs"
-bash scripts/integration_test_full.sh
+NODE_OPTIONS="-r ./scripts/container-patch.cjs" bash scripts/integration_test_full.sh
 ```
 
-The patch is runtime-only (env var + temp file) — it does not modify the source, bundle, or package.
+The patch (`scripts/container-patch.cjs`) rewrites `localhost:8087` → `nginx` in all `fetch` and `ws` calls at runtime. `.env.local` stays unchanged — same `HULY_URL=http://localhost:8087` as on the host.
 
 ## Quick Smoke Test
 
@@ -69,7 +68,7 @@ Expected: JSON with `"projects": [...]`
 
 **Coverage**: 106 tool calls across 18 domains. Self-cleaning: all created entities are deleted at the end of each section. Tools that would leak data (no delete counterpart) are skipped. Run time: ~3 minutes.
 
-**Last verified**: 2026-03-30 — 133 passed, 0 failed, 32 skipped (of 165 total).
+**Last verified**: 2026-04-05 — 133 passed, 0 failed, 32 skipped (of 165 total).
 
 ### How to Run
 
