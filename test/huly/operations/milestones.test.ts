@@ -109,6 +109,7 @@ interface MockConfig {
   captureMilestoneQuery?: { query?: Record<string, unknown>; options?: Record<string, unknown> }
   captureCreateDoc?: { attributes?: Record<string, unknown>; id?: string }
   captureUpdateDoc?: { operations?: Record<string, unknown> }
+  captureUploadMarkup?: { objectAttr?: string; markup?: string; format?: string }
   captureRemoveDoc?: { called?: boolean }
 }
 
@@ -193,12 +194,24 @@ const createTestLayerWithMocks = (config: MockConfig) => {
     }
   ) as HulyClientOperations["removeDoc"]
 
+  const uploadMarkupImpl: HulyClientOperations["uploadMarkup"] = (
+    (_objectClass: unknown, _objectId: unknown, objectAttr: unknown, markup: unknown, format: unknown) => {
+      if (config.captureUploadMarkup) {
+        config.captureUploadMarkup.objectAttr = objectAttr as string
+        config.captureUploadMarkup.markup = markup as string
+        config.captureUploadMarkup.format = format as string
+      }
+      return Effect.succeed("mock-markup-ref" as never)
+    }
+  ) as HulyClientOperations["uploadMarkup"]
+
   return HulyClient.testLayer({
     findAll: findAllImpl,
     findOne: findOneImpl,
     createDoc: createDocImpl,
     updateDoc: updateDocImpl,
-    removeDoc: removeDocImpl
+    removeDoc: removeDocImpl,
+    uploadMarkup: uploadMarkupImpl
   })
 }
 
@@ -364,7 +377,7 @@ describe("getMilestone", () => {
         const project = makeProject({ identifier: "TEST" })
         const milestone = makeMilestone({
           label: "Sprint 1",
-          description: "First sprint",
+          description: markdownToMarkupString("First sprint"),
           status: MilestoneStatus.InProgress,
           targetDate: 1706500000000,
           modifiedOn: 1706400000000,
@@ -526,15 +539,17 @@ describe("createMilestone", () => {
       }))
 
     // test-revizorro: approved
-    it.effect("creates milestone with description", () =>
+    it.effect("creates milestone with description and uploads collab doc", () =>
       Effect.gen(function*() {
         const project = makeProject({ identifier: "TEST" })
         const captureCreateDoc: MockConfig["captureCreateDoc"] = {}
+        const captureUploadMarkup: MockConfig["captureUploadMarkup"] = {}
 
         const testLayer = createTestLayerWithMocks({
           projects: [project],
           milestones: [],
-          captureCreateDoc
+          captureCreateDoc,
+          captureUploadMarkup
         })
 
         yield* createMilestone({
@@ -545,6 +560,9 @@ describe("createMilestone", () => {
         }).pipe(Effect.provide(testLayer))
 
         expect(captureCreateDoc.attributes?.description).toBe(markdownToMarkupString("First sprint of Q1"))
+        expect(captureUploadMarkup.objectAttr).toBe("description")
+        expect(captureUploadMarkup.markup).toBe("First sprint of Q1")
+        expect(captureUploadMarkup.format).toBe("markdown")
       }))
 
     // test-revizorro: approved
@@ -661,16 +679,18 @@ describe("updateMilestone", () => {
       }))
 
     // test-revizorro: approved
-    it.effect("updates milestone description", () =>
+    it.effect("updates milestone description via uploadMarkup and updateDoc", () =>
       Effect.gen(function*() {
         const project = makeProject({ identifier: "TEST" })
         const milestone = makeMilestone({ label: "Sprint 1" })
         const captureUpdateDoc: MockConfig["captureUpdateDoc"] = {}
+        const captureUploadMarkup: MockConfig["captureUploadMarkup"] = {}
 
         const testLayer = createTestLayerWithMocks({
           projects: [project],
           milestones: [milestone],
-          captureUpdateDoc
+          captureUpdateDoc,
+          captureUploadMarkup
         })
 
         const result = yield* updateMilestone({
@@ -680,6 +700,9 @@ describe("updateMilestone", () => {
         }).pipe(Effect.provide(testLayer))
 
         expect(result.updated).toBe(true)
+        expect(captureUploadMarkup.objectAttr).toBe("description")
+        expect(captureUploadMarkup.markup).toBe("Updated description")
+        expect(captureUploadMarkup.format).toBe("markdown")
         expect(captureUpdateDoc.operations?.description).toBe(markdownToMarkupString("Updated description"))
       }))
 
@@ -733,11 +756,13 @@ describe("updateMilestone", () => {
         const project = makeProject({ identifier: "TEST" })
         const milestone = makeMilestone({ label: "Sprint 1" })
         const captureUpdateDoc: MockConfig["captureUpdateDoc"] = {}
+        const captureUploadMarkup: MockConfig["captureUploadMarkup"] = {}
 
         const testLayer = createTestLayerWithMocks({
           projects: [project],
           milestones: [milestone],
-          captureUpdateDoc
+          captureUpdateDoc,
+          captureUploadMarkup
         })
 
         yield* updateMilestone({
@@ -753,6 +778,8 @@ describe("updateMilestone", () => {
         expect(captureUpdateDoc.operations?.description).toBe(markdownToMarkupString("Completed"))
         expect(captureUpdateDoc.operations?.status).toBe(MilestoneStatus.Completed)
         expect(captureUpdateDoc.operations?.targetDate).toBe(1706700000000)
+        expect(captureUploadMarkup.objectAttr).toBe("description")
+        expect(captureUploadMarkup.markup).toBe("Completed")
       }))
 
     // test-revizorro: approved

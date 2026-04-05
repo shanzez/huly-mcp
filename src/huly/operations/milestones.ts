@@ -183,6 +183,16 @@ export const createMilestone = (
       milestoneId
     )
 
+    if (params.description) {
+      yield* client.uploadMarkup(
+        tracker.class.Milestone,
+        milestoneId,
+        "description",
+        params.description,
+        "markdown"
+      )
+    }
+
     return { id: MilestoneId.make(milestoneId), label: MilestoneLabel.make(params.label) }
   })
 
@@ -199,6 +209,15 @@ export const updateMilestone = (
     }
 
     if (params.description !== undefined) {
+      if (params.description.trim() !== "") {
+        yield* client.uploadMarkup(
+          tracker.class.Milestone,
+          milestone._id,
+          "description",
+          params.description,
+          "markdown"
+        )
+      }
       updateOps.description = optionalMarkdownToMarkup(params.description)
     }
 
