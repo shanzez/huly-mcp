@@ -18,7 +18,7 @@ import { CommentNotFoundError, HulyConnectionError } from "../errors.js"
 import { clampLimit, findProjectAndIssue as findProjectAndIssueShared, toRef } from "./shared.js"
 
 import { chunter, tracker } from "../huly-plugins.js"
-import { markdownToMarkupString, markupToMarkdownString } from "./channels.js"
+import { markdownToMarkupString, optionalMarkupToMarkdown } from "./markup.js"
 
 type ListCommentsError =
   | HulyClientError
@@ -110,7 +110,7 @@ export const listComments = (
     const validated = yield* Schema.decodeUnknown(Schema.Array(CommentSchema))(
       messages.map((msg) => ({
         id: msg._id,
-        body: msg.message ? markupToMarkdownString(msg.message) : "",
+        body: optionalMarkupToMarkdown(msg.message),
         authorId: msg.modifiedBy,
         createdOn: msg.createdOn,
         modifiedOn: msg.modifiedOn,

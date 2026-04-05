@@ -26,6 +26,7 @@ import { MilestoneNotFoundError } from "../errors.js"
 import { clampLimit, findByNameOrId, findProject, findProjectAndIssue, toRef } from "./shared.js"
 
 import { tracker } from "../huly-plugins.js"
+import { optionalMarkdownToMarkup, optionalMarkupToMarkdown } from "./markup.js"
 
 type ListMilestonesError =
   | HulyClientError
@@ -148,7 +149,7 @@ export const getMilestone = (
     const result: Milestone = {
       id: MilestoneId.make(milestone._id),
       label: MilestoneLabel.make(milestone.label),
-      description: milestone.description,
+      description: optionalMarkupToMarkdown(milestone.description),
       status: milestoneStatusToString(milestone.status),
       targetDate: milestone.targetDate,
       project: params.project,
@@ -169,7 +170,7 @@ export const createMilestone = (
 
     const milestoneData: Data<HulyMilestone> = {
       label: params.label,
-      description: params.description ?? "",
+      description: optionalMarkdownToMarkup(params.description),
       status: MilestoneStatus.Planned,
       targetDate: params.targetDate,
       comments: 0
@@ -198,7 +199,7 @@ export const updateMilestone = (
     }
 
     if (params.description !== undefined) {
-      updateOps.description = params.description
+      updateOps.description = optionalMarkdownToMarkup(params.description)
     }
 
     if (params.targetDate !== undefined) {

@@ -22,6 +22,7 @@ import {
 } from "../../../src/huly/operations/milestones.js"
 
 import { tracker } from "../../../src/huly/huly-plugins.js"
+import { markdownToMarkupString } from "../../../src/huly/operations/markup.js"
 import { issueIdentifier, milestoneIdentifier, projectIdentifier } from "../../helpers/brands.js"
 
 const makeProject = (overrides?: Partial<HulyProject>): HulyProject => {
@@ -543,7 +544,7 @@ describe("createMilestone", () => {
           targetDate: 1706500000000
         }).pipe(Effect.provide(testLayer))
 
-        expect(captureCreateDoc.attributes?.description).toBe("First sprint of Q1")
+        expect(captureCreateDoc.attributes?.description).toBe(markdownToMarkupString("First sprint of Q1"))
       }))
 
     // test-revizorro: approved
@@ -679,7 +680,7 @@ describe("updateMilestone", () => {
         }).pipe(Effect.provide(testLayer))
 
         expect(result.updated).toBe(true)
-        expect(captureUpdateDoc.operations?.description).toBe("Updated description")
+        expect(captureUpdateDoc.operations?.description).toBe(markdownToMarkupString("Updated description"))
       }))
 
     // test-revizorro: approved
@@ -749,7 +750,7 @@ describe("updateMilestone", () => {
         }).pipe(Effect.provide(testLayer))
 
         expect(captureUpdateDoc.operations?.label).toBe("Sprint 1 Final")
-        expect(captureUpdateDoc.operations?.description).toBe("Completed")
+        expect(captureUpdateDoc.operations?.description).toBe(markdownToMarkupString("Completed"))
         expect(captureUpdateDoc.operations?.status).toBe(MilestoneStatus.Completed)
         expect(captureUpdateDoc.operations?.targetDate).toBe(1706700000000)
       }))

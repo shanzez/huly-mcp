@@ -31,6 +31,7 @@ import {
   removeTemplateChild,
   updateIssueTemplate
 } from "../../../src/huly/operations/issue-templates.js"
+import { markdownToMarkupString } from "../../../src/huly/operations/markup.js"
 import {
   componentIdentifier,
   email,
@@ -727,7 +728,7 @@ describe("createIssueTemplate", () => {
       expect(result.title).toBe("Full Template")
       expect(capture.attributes).toMatchObject({
         title: "Full Template",
-        description: "Detailed description",
+        description: markdownToMarkupString("Detailed description"),
         priority: IssuePriority.High,
         assignee: "person-1",
         component: "component-1",
@@ -1046,7 +1047,7 @@ describe("updateIssueTemplate", () => {
       }).pipe(Effect.provide(testLayer))
 
       expect(result.updated).toBe(true)
-      expect(captureUpdate.operations).toMatchObject({ description: "Updated description" })
+      expect(captureUpdate.operations).toMatchObject({ description: markdownToMarkupString("Updated description") })
     }))
 
   // test-revizorro: approved
@@ -1492,7 +1493,7 @@ describe("createIssueTemplate with children", () => {
       expect(children[0].title).toBe("Child A")
       expect(children[0].priority).toBe(IssuePriority.High)
       expect(children[1].title).toBe("Child B")
-      expect(children[1].description).toBe("desc B")
+      expect(children[1].description).toBe(markdownToMarkupString("desc B"))
     }))
 
   it.effect("creates template with empty children when none provided", () =>

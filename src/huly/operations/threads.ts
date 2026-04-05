@@ -28,12 +28,8 @@ import { ChannelId, MessageId, PersonName, ThreadReplyId } from "../../domain/sc
 import type { HulyClient, HulyClientError } from "../client.js"
 import type { ChannelNotFoundError } from "../errors.js"
 import { MessageNotFoundError, ThreadReplyNotFoundError } from "../errors.js"
-import {
-  buildSocialIdToPersonNameMap,
-  findChannel,
-  markdownToMarkupString,
-  markupToMarkdownString
-} from "./channels.js"
+import { buildSocialIdToPersonNameMap, findChannel } from "./channels.js"
+import { markdownToMarkupString, markupToMarkdownString } from "./markup.js"
 import { toRef } from "./shared.js"
 
 import { chunter } from "../huly-plugins.js"

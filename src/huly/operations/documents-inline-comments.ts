@@ -23,8 +23,9 @@ import type {
 import type { HulyClient, HulyClientError } from "../client.js"
 import type { DocumentNotFoundError, TeamspaceNotFoundError } from "../errors.js"
 import { chunter } from "../huly-plugins.js"
-import { buildSocialIdToPersonNameMap, markupToMarkdownString } from "./channels.js"
+import { buildSocialIdToPersonNameMap } from "./channels.js"
 import { findTeamspaceAndDocument } from "./documents.js"
+import { optionalMarkupToMarkdown } from "./markup.js"
 import { toRef } from "./shared.js"
 
 const INLINE_COMMENT_MARK_TYPE = "inline-comment"
@@ -133,7 +134,7 @@ export const listInlineComments = (
         const threadReplies = threadRepliesMap.get(comment.threadId) ?? []
         const replies: Array<InlineCommentReply> = threadReplies.map(r => ({
           id: r._id,
-          body: r.message ? markupToMarkdownString(r.message) : "",
+          body: optionalMarkupToMarkdown(r.message),
           sender: r.createdBy !== undefined ? nameMap.get(r.createdBy) : undefined,
           createdOn: r.createdOn
         }))

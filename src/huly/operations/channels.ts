@@ -7,15 +7,13 @@ import {
   type DocumentQuery,
   type DocumentUpdate,
   generateId,
-  type Markup,
   type PersonId,
   type Ref,
   SortingOrder,
   type Space
 } from "@hcengineering/core"
-import { jsonToMarkup, markupToJSON } from "@hcengineering/text"
-import { markdownToMarkup, markupToMarkdown } from "@hcengineering/text-markdown"
 import { Effect } from "effect"
+import { markdownToMarkupString, markupToMarkdownString } from "./markup.js"
 
 import type {
   Channel,
@@ -85,9 +83,6 @@ const personIdsAsSocialIdentityRefs = (
 ): Array<SocialIdentityRef> => ids as Array<SocialIdentityRef>
 /* eslint-enable no-restricted-syntax */
 
-// SDK: jsonToMarkup return type doesn't match Markup; cast contained here.
-const jsonAsMarkup: (json: ReturnType<typeof markdownToMarkup>) => Markup = jsonToMarkup
-
 // --- Helpers ---
 
 export const findChannel = (
@@ -113,16 +108,6 @@ export const findChannel = (
 
     return { client, channel }
   })
-
-export const markupToMarkdownString = (markup: Markup): string => {
-  const json = markupToJSON(markup)
-  return markupToMarkdown(json, { refUrl: "", imageUrl: "" })
-}
-
-export const markdownToMarkupString = (markdown: string): Markup => {
-  const json = markdownToMarkup(markdown, { refUrl: "", imageUrl: "" })
-  return jsonAsMarkup(json)
-}
 
 /**
  * Build a map from SocialIdentity ID to Person name.

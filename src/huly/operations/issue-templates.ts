@@ -71,6 +71,7 @@ import {
 } from "./shared.js"
 
 import { contact, tracker } from "../huly-plugins.js"
+import { optionalMarkdownToMarkup, optionalMarkupToMarkdown } from "./markup.js"
 
 type ListIssueTemplatesError =
   | HulyClientError
@@ -192,7 +193,7 @@ const resolveChild = (
 
     // exactOptionalPropertyTypes: can't assign undefined to optional fields
     const withDescription = child.description
-      ? { ...base, description: child.description }
+      ? { ...base, description: optionalMarkupToMarkdown(child.description) }
       : base
     const withAssignee = assigneeName !== undefined
       ? { ...withDescription, assignee: PersonName.make(assigneeName) }
@@ -246,7 +247,7 @@ const buildTemplateChild = (
     return {
       id: generateId<HulyIssue>(),
       title: input.title,
-      description: input.description ?? "",
+      description: optionalMarkdownToMarkup(input.description),
       priority: stringToPriority(input.priority || "no-priority"),
       assignee: assigneeRef,
       component: componentRef,
@@ -312,7 +313,7 @@ export const getIssueTemplate = (
     const result: IssueTemplate = {
       id: IssueTemplateId.make(template._id),
       title: template.title,
-      description: template.description,
+      description: optionalMarkupToMarkdown(template.description),
       priority: priorityToString(template.priority),
       assignee: assigneeName !== undefined ? PersonName.make(assigneeName) : undefined,
       component: componentLabel !== undefined ? ComponentLabel.make(componentLabel) : undefined,
@@ -374,7 +375,7 @@ export const createIssueTemplate = (
 
     const templateData: Data<HulyIssueTemplate> = {
       title: params.title,
-      description: params.description ?? "",
+      description: optionalMarkdownToMarkup(params.description),
       priority,
       assignee: assigneeRef,
       component: componentRef,
@@ -411,7 +412,8 @@ export const createIssueFromTemplate = (
     const { client, project, template } = yield* findProjectAndTemplate(params)
 
     const title = params.title ?? template.title
-    const description = params.description ?? template.description
+    const description = params.description
+      ?? optionalMarkupToMarkdown(template.description, undefined)
     const priority = params.priority ?? priorityToString(template.priority)
 
     const templateAssigneeRef = template.assignee
@@ -464,7 +466,7 @@ export const createIssueFromTemplate = (
         // Create child as top-level issue via createIssue (no parentIssue).
         // We can't pass parentIssue because createIssue uses findIssueInProject
         // which does findOne on the just-created parent — that hangs.
-        const childDescription = child.description !== "" ? child.description : undefined
+        const childDescription = optionalMarkupToMarkdown(child.description, undefined)
         const childResult = yield* createIssue({
           project: params.project,
           title: child.title,
@@ -522,7 +524,7 @@ export const updateIssueTemplate = (
     }
 
     if (params.description !== undefined) {
-      updateOps.description = params.description
+      updateOps.description = optionalMarkdownToMarkup(params.description)
     }
 
     if (params.priority !== undefined) {

@@ -16,7 +16,7 @@ import { addComment, deleteComment, listComments, updateComment } from "../../..
 import { commentBrandId, issueIdentifier, projectIdentifier } from "../../helpers/brands.js"
 
 import { chunter, tracker } from "../../../src/huly/huly-plugins.js"
-import { markdownToMarkupString } from "../../../src/huly/operations/channels.js"
+import { markdownToMarkupString } from "../../../src/huly/operations/markup.js"
 
 // --- Mock Data Builders ---
 

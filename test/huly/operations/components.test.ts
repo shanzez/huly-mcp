@@ -19,7 +19,6 @@ import type {
   ProjectNotFoundError
 } from "../../../src/huly/errors.js"
 import { contact, tracker } from "../../../src/huly/huly-plugins.js"
-import { markdownToMarkupString } from "../../../src/huly/operations/channels.js"
 import {
   createComponent,
   deleteComponent,
@@ -29,6 +28,7 @@ import {
   setIssueComponent,
   updateComponent
 } from "../../../src/huly/operations/components.js"
+import { markdownToMarkupString } from "../../../src/huly/operations/markup.js"
 import { componentIdentifier, email, issueIdentifier, projectIdentifier } from "../../helpers/brands.js"
 
 // --- Mock Data Builders ---
