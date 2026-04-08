@@ -1,106 +1,381 @@
-# MCP Architecture Cleanup Report
+# Huly MCP Architecture And Code Practices Report
 
-## Item 49: handleToolCall return type (IMPLEMENTED)
+Date: 2026-04-08
+Repository: `/workspace/typescript/hulymcp`
 
-**Change**: `Promise<McpToolResponse> | null` -> `Promise<McpToolResponse | null>`
+## Scope
 
-The null (meaning "tool not found") is now inside the Promise, making the return type uniform. The `buildRegistry` handler became `async` so it always returns a Promise. The caller in `server.ts` now does `await` first, then checks for null -- simpler control flow, no need to distinguish "synchronous null" from "async response."
+This report is a repo-wide audit of:
 
-## Item 48: McpToolResponse index signature (IMPLEMENTED -- remove)
+- architecture and layer boundaries
+- code practices against `CLAUDE.md` and `.claude/review-rules.md`
+- string-type adherence and primitive leakage
+- cast usage and SDK-boundary typing discipline
+- quality harness completeness
 
-**Decision**: Remove the `[key: string]: unknown` index signature. Add `_meta?: ErrorMetadata` as an explicit optional field on `McpToolResponse`.
+This is an audit report, not a refactor pass. No production code behavior was changed here.
 
-**Rationale**: The index signature existed solely to allow `_meta` on the `McpErrorResponseWithMeta` subtype. That's one field. An open index signature is too permissive -- it allows any arbitrary key assignment without type errors, defeating TypeScript's structural checking. Making `_meta` explicit:
-- Self-documents the only extra field actually used
-- Prevents accidental property assignments
-- The MCP SDK uses Zod `$loose` (passthrough) at runtime, so extra properties are accepted regardless of our TypeScript types
+## Immediate Status
 
-`McpErrorResponseWithMeta` still narrows `_meta` to required (non-optional) and `isError` to `true`.
+- `AGENTS.md` already exists and is a symlink to `CLAUDE.md`
+- source footprint: 131 `src/**/*.ts` files, 66 `test/**/*.ts` files
+- source size: 26,016 lines under `src/`
+- tool groups exposed through MCP: 22
+- quality harness pieces required by project instructions are present:
+  - `vitest.config.ts` with v8 coverage and 99% thresholds
+  - `.jscpd.json`
+  - `madge` script in `package.json`
+  - `.husky/pre-commit`
+  - `check-all` script
+  - `@effect/vitest`
+  - Effect + functional ESLint stack
 
-## Item 51: WorkspaceClient optional in handler (KEPT AS-IS)
+## Executive Summary
 
-**Decision**: No change.
+The project has a strong top-level architecture. The main path is coherent:
 
-**Rationale**: `WorkspaceClient` is genuinely optional -- it depends on workspace-level API availability. The optionality flows from `createMcpServer(... workspaceClient?)` through the registry to individual handlers. Only 2 handler factories (`createWorkspaceToolHandler`, `createNoParamsWorkspaceToolHandler`) check for it, and they produce clear error responses when absent. Lifting resolution higher would either force `WorkspaceClient` as required everywhere (breaking non-workspace setups) or require splitting registries by client dependency (over-engineering for 2 null checks).
+1. Effect config and client layers in `src/index.ts`
+2. MCP transport/server boundary in `src/mcp/`
+3. tool registry and handler factories in `src/mcp/tools/`
+4. domain schemas in `src/domain/schemas/`
+5. Huly operations in `src/huly/operations/`
+6. Huly transport/client wrappers in `src/huly/*.ts`
 
-## Item 52: toMcpResponse strips _meta by rebuild (SIMPLIFIED)
+That basic split is sound and is better than average for an MCP server. The schema-first parse path and the tool handler factories are especially good.
 
-**Decision**: Simplify from manual object rebuild to destructuring.
+The main quality debt is not architectural confusion. It is local erosion at the SDK boundary:
 
-**Before**: Built a new object property-by-property, conditionally copying `isError`.
-**After**: `const { _meta: _, ...wire } = response; return wire`
+- primitive `string` values are reintroduced after schema parsing
+- several result interfaces discard existing branded/domain types
+- dynamic `Record<string, unknown>` access is concentrated in a few modules
+- some helper modules use mutation patterns the repo’s own review rules disallow
 
-This is equivalent but idiomatic. With `_meta` now explicit on `McpToolResponse` (item 48), the destructuring is type-safe. The return type is `Omit<McpToolResponse, "_meta">`, making it clear that `_meta` is intentionally stripped before the wire. The parameter type simplified from `McpErrorResponseWithMeta | McpToolResponse` to just `McpToolResponse` since the union was unnecessary (`McpErrorResponseWithMeta extends McpToolResponse`).
+In short: the system shape is good, but type precision weakens in hotspots.
 
-## Verification
+## Architecture Assessment
 
-- `pnpm build`: pass
-- `pnpm typecheck`: pass (0 errors)
-- `pnpm lint`: pass (0 errors, pre-existing warnings only)
-- `pnpm test`: 755/755 tests pass
+### What is working well
 
----
+- `src/index.ts` composes config, telemetry, client layers, and lazy/eager startup cleanly.
+- `src/mcp/server.ts` keeps transport concerns separate from domain operations.
+- `src/mcp/tools/registry.ts` centralizes parse, service provision, effect execution, and MCP response shaping. This is a strong abstraction.
+- `src/domain/schemas/` is the right place for external contract definitions and is used consistently for tool input decoding.
+- `src/huly/operations/` is organized by domain area and keeps tool definitions thin.
+- `src/domain/schemas/shared.ts` already contains a substantial branded-type vocabulary. The project is not missing the concept of domain strings; it is missing consistent propagation of them.
 
-# Error Architecture Research - Summary
+### Structural strengths
 
-## Summary
+- Tool input validation is schema-backed instead of ad hoc.
+- Error mapping is centralized.
+- Client capabilities are split by responsibility: workspace, storage, main Huly client.
+- README tool docs are generated from source, which reduces drift.
+- Tests are broad and coverage thresholds are aggressively high.
 
-Investigated the viability of the 4-edit error architecture in `errors.ts` and found significant issues: the TypeScript compiler catches only 1 of 4 required edits, there is a critical exhaustiveness bug in error-mapping.ts, and substantial dead code exists. Option A (simplifying via mcpErrorCode) is recommended.
+### Structural weaknesses
 
-## Item Addressed
-
-2b -- error 4-edit architecture viability research
+- `src/domain/schemas/index.ts` is 1,061 lines and acts as a mega-barrel. It is mechanically fine, but it is now a scale hotspot for discoverability and merge pressure.
+- Several feature modules combine domain translation, SDK quirks, identifier resolution, and business logic in one file, especially under `src/huly/operations/`.
+- Workspace result types and some relation/custom-field result types are not schema-backed at runtime, even though they cross the MCP boundary.
 
 ## Findings
 
-### Compiler Safety Is Incomplete
+### High
 
-Of 4 required edits per new error, only 1 is caught at compile time:
+#### 1. Primitive string leakage is concentrated in feature result types that already have domain replacements
 
-| Edit | Caught? | Reason |
-|------|---------|--------|
-| 1. Error class definition | - | Starting point |
-| 2. Type union (`HulyDomainError`) | Yes | Operation error type mismatch caught by createToolHandler |
-| 3. Schema union | No | Dead code, never imported |
-| 4. Error-mapping switch | No | `as never` cast defeats exhaustive checking |
+This violates the project review rule: “No bare primitives for domain values.”
 
-### Critical Bug Found
+Examples:
 
-In `src/mcp/error-mapping.ts` line 106, the pattern `absurd(error as never)` defeats TypeScript's exhaustiveness check. The `as never` cast silences the compiler regardless of whether all cases are covered. Correct pattern: `absurd(error)` without the cast.
+- `src/domain/schemas/relations.ts:65-89`
+  - `RelationEntry.identifier`, `_id`, `_class`
+  - `DocumentRelationEntry.teamspace`, `_id`, `_class`
+  - `AddIssueRelationResult.sourceIssue` and `targetIssue`
+  - `RemoveIssueRelationResult.sourceIssue` and `targetIssue`
+- `src/domain/schemas/custom-fields.ts:61-83`
+  - `id`, `fieldId`, `objectId`, `ownerClassId`, `type`
+- `src/domain/schemas/time.ts:24-29`
+  - `WorkSlot.id` is `string` despite the shared schema already defining branded IDs for this domain family
+- `src/domain/schemas/time.ts:214-226`
+  - `CreateWorkSlotResult.slotId` and `StopTimerResult.reportId` fall back to bare `string`
+- `src/domain/schemas/workspace.ts:35-73` and `:198-204`
+  - `url`, `name`, `version`, `mode`, `socialLinks`, and several profile fields remain plain strings despite the project already branding comparable identifier and constrained-string concepts
 
-### Dead Code
+Impact:
 
-1. `const HulyDomainError` Schema union (lines 586-652) -- never used in production/tests
-2. `getMcpErrorCode()` function (line 657) -- only called in tests
-3. `mcpErrorCode` property on every error -- never read at runtime (switch uses `_tag`)
+- downstream code loses semantic information after parsing
+- identical runtime strings from different domains become interchangeable in TypeScript
+- the repo’s strongest type-safety asset, `shared.ts`, is not fully leveraged
 
-### Architecture Issues
+Recommendation:
 
-- 660 lines in errors.ts; ~90% are "entity not found" boilerplate
-- `mcpErrorCode` property duplicates switch logic; could drift
-- Only 4 errors have custom message prefixes justifying the switch's existence
+- define and apply additional branded aliases where values have stable domain meaning
+- prioritize IDs and cross-tool identifiers first
+- then normalize returned result shapes so MCP outputs preserve branded types internally before final JSON encoding
 
-## Recommendation: Option A
+#### 2. `custom-fields` is the most type-eroded production hotspot
 
-Delete the error-mapping switch. Use `error.mcpErrorCode` directly:
+`src/huly/operations/custom-fields.ts:51-64`, `:81-84`, `:103`, `:114-120`, `:155-166`, `:214-226`
 
-```typescript
-export const mapDomainErrorToMcp = (error: HulyDomainError): McpErrorResponseWithMeta =>
-  createErrorResponse(error.message, error.mcpErrorCode)
+This file contains the densest concentration of:
+
+- `as unknown as Record<string, unknown>`
+- `as string`
+- weak `typeName: string`
+- raw dynamic object reads from SDK documents
+
+This is partly justified by the Huly SDK shape, but the current boundary is too wide. The dynamic inspection logic is spread across the entire module instead of being isolated once and then re-exposed as typed decoders.
+
+Specific problems:
+
+- `describeType(type: Record<string, unknown>)` returns `typeName: string` instead of a closed union.
+- `attr.attributeOf as string` is repeated rather than normalized once.
+- `doc as unknown as Record<string, unknown>` exposes the entire document body as an untyped map.
+- `SetCustomFieldParamsSchema.value` is forced to `Schema.String`, then reparsed later by `parseValueForType`.
+
+Impact:
+
+- boundary typing is weaker exactly where arbitrary external metadata is handled
+- custom field behavior is harder to extend safely
+- callers cannot rely on precise type information for custom field metadata
+
+Recommendation:
+
+- introduce a dedicated decoded shape for the custom-attribute metadata boundary
+- narrow `typeName` to a literal union like `"string" | "number" | "boolean" | "enum" | "array" | "ref" | "date" | "markup" | "unknown"`
+- isolate unsafe SDK reads in one adapter function per document shape
+
+### Medium
+
+#### 3. `toRef` is the central cast escape hatch, but its parameter is too weak
+
+`src/huly/operations/shared.ts:17-20`
+
+```ts
+export const toRef = <T extends Doc>(id: string): Ref<T> => id as Ref<T>
 ```
 
-**Benefits:**
-- Reduces edits per new error from 4 to 2 (class + type union)
-- Eliminates exhaustiveness bug entirely
-- Makes mcpErrorCode actually useful instead of dead
-- Custom message prefixes move to error's message getter
-- Removes dead Schema union
+The cast is acknowledged and documented, which is good. The issue is that the helper accepts any `string`, so once a value reaches it, the compiler cannot distinguish a validated domain identifier from arbitrary text.
 
-## Commit
+Impact:
 
-**Hash:** 6c283fb
-**Message:** docs: error architecture research report
+- all branded ID precision is erased before the Huly SDK boundary
+- accidental cross-domain ID mixing becomes easier
 
----
+Recommendation:
 
-**Full research available at:** `/Users/firfi/work/typescript/hulymcp/.worktrees/wt-errors-research/REPORT.md` (long form with detailed analysis, files examined, and option comparison)
+- accept a narrower branded input where possible
+- consider `NonEmptyString`-level branded inputs or domain-specific identifier types before conversion
+- keep one unavoidable cast, but move more validation before the cast
+
+#### 4. Test-management shared helpers violate the repo’s own immutability rule
+
+`src/huly/operations/test-management-shared.ts:121-250`
+
+The finder helpers use the repeated pattern:
+
+- `let project = ...`
+- `if undefined, reassign with fallback query`
+
+This directly conflicts with `.claude/review-rules.md`:
+
+- “No `let` for conditional assignment”
+
+This is not catastrophic, but it is a consistency failure in a shared helper file used by multiple features.
+
+Recommendation:
+
+- rewrite these helpers as `Effect.flatMap` chains or small local functions returning early
+- one helper like `findByIdOrNameInSpace` would remove the repetition entirely
+
+#### 5. Workspace outputs are useful but under-modeled
+
+`src/huly/operations/workspace.ts:57-58`, `:76`, `:111-127`, `:139-146`, `:173-196`, `:205-257`
+
+The workspace module is operationally clean, but several outputs collapse into plain strings:
+
+- `formatVersion(...): string`
+- local destructuring typed as `{ email: string | undefined; name: string | undefined }`
+- schema interfaces with `url: string`, `name: string`, `mode?: string`, `socialLinks?: { [x: string]: string }`
+
+This is a good candidate for a “precision pass” because the workflow itself is stable.
+
+Recommendation:
+
+- introduce branded or literal-backed types for workspace URLs, mode, and profile link maps where possible
+- if runtime validation is intentionally skipped for internal result types, document that boundary explicitly in the report and code comments
+
+#### 6. Relation result types discard existing identifier semantics
+
+`src/domain/schemas/relations.ts:65-95` and `src/huly/operations/relations.ts:221-266`
+
+The relation params are well-typed on input using `ProjectIdentifier`, `IssueIdentifier`, and `RelationType`. The output types then widen back to plain strings.
+
+This is a classic parse-precise / return-loose mismatch.
+
+Recommendation:
+
+- define typed result interfaces using the existing identifier brands
+- use a dedicated brand or alias for Huly class IDs if they are intentionally exposed
+
+### Low
+
+#### 7. The shared schema layer is strong, but propagation is inconsistent
+
+`src/domain/schemas/shared.ts` already defines:
+
+- branded Huly refs
+- human-readable identifiers
+- constrained string domains
+- workspace/account identifiers
+- numeric brands
+
+This is a major asset. The issue is adoption consistency, not missing infrastructure.
+
+Recommendation:
+
+- make “if a brand exists in `shared.ts`, use it” an explicit review checklist item during refactors
+
+#### 8. Source comments are mostly useful, but a few files rely on broad file-level exceptions
+
+Example:
+
+- `src/huly/operations/custom-fields.ts:1`
+
+The top-level eslint-disable comment is technically honest, but broad file-level suppression makes it easier for additional unsafe casts to accumulate later.
+
+Recommendation:
+
+- prefer narrower helper-level containment for SDK-boundary casts
+
+#### 9. One TODO remains in production code
+
+- `src/huly/operations/time.ts:67`
+
+This is minor, but production TODOs should either become tracked issues or be resolved.
+
+## String-Type Adherence Review
+
+### Overall grade
+
+Moderate, with good foundations and inconsistent enforcement.
+
+### Evidence in favor
+
+- many tool params already use branded types from `shared.ts`
+- several literal domains are modeled correctly with `Schema.Literal(...)`
+- identifier-heavy paths like issues and relations start from branded input schemas
+
+### Evidence against
+
+- broad search found 305 `as` occurrences in `src/` alone
+- many are harmless `as const`, but several important ones are true type escapes
+- multiple result interfaces revert to `string` for IDs and domain values
+- `Record<string, unknown>` and `Map<string, string>` are used for domain-carrying data where more precise map/value types should exist
+
+### Priority targets for tightening
+
+1. `custom-fields`
+2. `relations`
+3. `workspace`
+4. `time`
+5. shared identifier bridges in `src/huly/operations/shared.ts`
+
+## Cast Review
+
+### Casts that appear justified
+
+- `src/huly/operations/shared.ts:20`
+  - central `Ref<T>` bridge for the Huly SDK
+- `src/huly/operations/shared.ts:68`
+  - `PersonUuid` after regex validation
+- `src/huly/operations/relations.ts:83-122` and `:143-187`
+  - `DocumentUpdate<HulyIssue>` casts around `$push`/`$pull` SDK typing limits
+- `src/huly/test-management-classes.ts`
+  - class-ref constants for external SDK classes
+
+### Casts that deserve follow-up
+
+- `src/huly/operations/custom-fields.ts`
+  - repeated dynamic record casts
+- `src/huly/operations/test-management-shared.ts:56-105`
+  - reverse-enum maps typed through `Record<string, ...>`
+- `src/huly/operations/channels.ts`
+  - string maps and social ID/ref bridging
+- `src/huly/operations/calendar-shared.ts`
+  - server-populated sentinel values via casts
+
+## Code Practices Review
+
+### Aligned with project guidance
+
+- package manager and scripts are `pnpm`-first
+- `check-all` exists and matches the documented gate
+- pre-commit includes `lint-staged` and `gitleaks`
+- tool descriptions are written for LLM comprehension, not human-only docs
+- README generation from tool definitions supports the LLM-first API principle
+
+### Partially aligned
+
+- boundary typing is strong on inputs, weaker on outputs
+- comments are usually explanatory, but file-level suppressions are sometimes broader than necessary
+- immutability discipline is inconsistent in helper modules
+
+### Misaligned
+
+- “No bare primitives for domain values” is not enforced consistently in result interfaces
+- “No `let` for conditional assignment” is violated in shared helper code
+
+## Quality Harness Review
+
+Present and correct:
+
+- `package.json`
+  - `check-all`, `circular`, `test:coverage`, `prepublishOnly`
+- `vitest.config.ts`
+  - v8 provider, 99% thresholds
+- `.jscpd.json`
+  - 2% threshold
+- `.husky/pre-commit`
+  - updates README, runs lint-staged, runs gitleaks
+
+One observation:
+
+- `typecheck` in `package.json` intentionally filters compiler output to `src/|test/`. That may be deliberate, but it also means non-source typing regressions can be hidden if they surface elsewhere.
+
+## Recommended Refactor Order
+
+### Phase 1: tighten domain outputs
+
+- replace bare ID strings in `relations`, `custom-fields`, `time`, and `workspace` result types with brands or named aliases
+- add missing constrained string aliases where stable domains already exist
+
+### Phase 2: isolate SDK dynamic boundaries
+
+- introduce dedicated decoder/adapter helpers for custom field metadata and similar dynamic Huly documents
+- keep `Record<string, unknown>` inside those adapters only
+
+### Phase 3: remove low-signal mutation
+
+- refactor `test-management-shared` finder helpers to pure/early-return patterns
+- refactor `workspace.updateGuestSettings` to avoid `let updated`
+
+### Phase 4: split a few scale hotspots
+
+- consider splitting `src/domain/schemas/index.ts` by export area or generating it
+- consider extracting common “find by id or name” helpers across operations modules
+
+## Bottom Line
+
+The project architecture is healthy. The main weakness is not system design but inconsistent follow-through on the project’s own type-discipline rules after values cross the Huly SDK boundary.
+
+If you want the next highest-value engineering move, it is not another feature. It is a focused “domain string and cast containment” pass across:
+
+- `src/huly/operations/custom-fields.ts`
+- `src/domain/schemas/custom-fields.ts`
+- `src/domain/schemas/relations.ts`
+- `src/domain/schemas/time.ts`
+- `src/domain/schemas/workspace.ts`
+- `src/huly/operations/test-management-shared.ts`
+
+That would materially improve correctness, reviewability, and future agent reliability without changing the overall architecture.
