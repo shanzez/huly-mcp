@@ -1,5 +1,5 @@
 import { describe, it } from "@effect/vitest"
-import type { PersonWithProfile, RegionInfo as HulyRegionInfo, WorkspaceLoginInfo } from "@hcengineering/account-client"
+import type { RegionInfo as HulyRegionInfo, WorkspaceLoginInfo } from "@hcengineering/account-client"
 import { AccountRole, type AccountUuid, type PersonUuid, type WorkspaceInfoWithStatus } from "@hcengineering/core"
 import { Effect } from "effect"
 import { expect } from "vitest"
@@ -17,7 +17,7 @@ import {
   updateMemberRole,
   updateUserProfile
 } from "../../../src/huly/operations/workspace.js"
-import { WorkspaceClient } from "../../../src/huly/workspace-client.js"
+import { WorkspaceClient, type WorkspaceClientUserProfile } from "../../../src/huly/workspace-client.js"
 import { accountId, regionId } from "../../helpers/brands.js"
 
 const mkAccountUuid = (id: string): AccountUuid => {
@@ -289,7 +289,7 @@ describe("getUserProfile", () => {
   // test-revizorro: approved
   it.effect("returns mapped profile when found", () =>
     Effect.gen(function*() {
-      const profile: PersonWithProfile = {
+      const profile: WorkspaceClientUserProfile = {
         uuid: mkPersonUuid("user-uuid-1234-5678-9abc-def012345678"),
         firstName: "John",
         lastName: "Doe",
@@ -322,6 +322,36 @@ describe("getUserProfile", () => {
       expect(result!.website).toBe("https://example.com")
       expect(result!.socialLinks).toEqual({ github: "johndoe" })
       expect(result!.isPublic).toBe(true)
+    }))
+
+  // test-revizorro: approved
+  it.effect("normalizes nullable profile fields to undefined", () =>
+    Effect.gen(function*() {
+      const profile: WorkspaceClientUserProfile = {
+        uuid: mkPersonUuid("user-uuid-1234-5678-9abc-def012345678"),
+        firstName: "John",
+        lastName: "Doe",
+        bio: null,
+        city: null,
+        country: null,
+        website: null,
+        socialLinks: null,
+        isPublic: false
+      }
+
+      const testLayer = WorkspaceClient.testLayer({
+        getUserProfile: () => Effect.succeed(profile)
+      })
+
+      const result = yield* getUserProfile().pipe(Effect.provide(testLayer))
+
+      expect(result).not.toBeNull()
+      expect(result!.bio).toBeUndefined()
+      expect(result!.city).toBeUndefined()
+      expect(result!.country).toBeUndefined()
+      expect(result!.website).toBeUndefined()
+      expect(result!.socialLinks).toBeUndefined()
+      expect(result!.isPublic).toBe(false)
     }))
 
   // test-revizorro: approved

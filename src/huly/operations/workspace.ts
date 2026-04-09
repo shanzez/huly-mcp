@@ -68,6 +68,8 @@ type GetRegionsError = WorkspaceClientError
 const formatVersion = (info: WorkspaceInfoWithStatus): string =>
   `${info.versionMajor}.${info.versionMinor}.${info.versionPatch}`
 
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => value ?? undefined
+
 export const listWorkspaceMembers = (
   params: ListWorkspaceMembersParams
 ): Effect.Effect<Array<WorkspaceMember>, ListWorkspaceMembersError, WorkspaceClient> =>
@@ -198,11 +200,11 @@ export const getUserProfile = (
       personUuid: PersonUuid.make(profile.uuid),
       firstName: profile.firstName,
       lastName: profile.lastName,
-      bio: profile.bio,
-      city: profile.city,
-      country: profile.country,
-      website: profile.website,
-      socialLinks: profile.socialLinks,
+      bio: nullToUndefined(profile.bio),
+      city: nullToUndefined(profile.city),
+      country: nullToUndefined(profile.country),
+      website: nullToUndefined(profile.website),
+      socialLinks: nullToUndefined(profile.socialLinks),
       isPublic: profile.isPublic
     }
   })

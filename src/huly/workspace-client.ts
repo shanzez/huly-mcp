@@ -39,6 +39,16 @@ import { HulyConnectionError } from "./errors.js"
 
 export type WorkspaceClientError = ConnectionError
 
+export type WorkspaceClientUserProfile =
+  & Omit<PersonWithProfile, "bio" | "city" | "country" | "website" | "socialLinks">
+  & {
+    readonly bio?: string | null
+    readonly city?: string | null
+    readonly country?: string | null
+    readonly website?: string | null
+    readonly socialLinks?: Record<string, string> | null
+  }
+
 export interface WorkspaceClientOperations {
   readonly getWorkspaceMembers: () => Effect.Effect<Array<WorkspaceMemberInfo>, WorkspaceClientError>
   readonly getPersonInfo: (account: PersonUuid) => Effect.Effect<PersonInfo, WorkspaceClientError>
@@ -47,7 +57,9 @@ export interface WorkspaceClientOperations {
   readonly getUserWorkspaces: () => Effect.Effect<Array<WorkspaceInfoWithStatus>, WorkspaceClientError>
   readonly createWorkspace: (name: string, region?: string) => Effect.Effect<WorkspaceLoginInfo, WorkspaceClientError>
   readonly deleteWorkspace: () => Effect.Effect<void, WorkspaceClientError>
-  readonly getUserProfile: (personUuid?: PersonUuid) => Effect.Effect<PersonWithProfile | null, WorkspaceClientError>
+  readonly getUserProfile: (
+    personUuid?: PersonUuid
+  ) => Effect.Effect<WorkspaceClientUserProfile | null, WorkspaceClientError>
   readonly setMyProfile: (
     profile: Partial<Omit<UserProfile, "personUuid">>
   ) => Effect.Effect<void, WorkspaceClientError>
