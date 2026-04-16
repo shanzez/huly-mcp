@@ -1,6 +1,7 @@
 import { describe, it } from "@effect/vitest"
-import type { Channel, Person } from "@hcengineering/contact"
+import type { Channel, Person, SocialIdentity } from "@hcengineering/contact"
 import type { Attribute, Class as HulyClass, Doc, FindResult, PersonId, Ref, Space, Status } from "@hcengineering/core"
+import { SocialIdType } from "@hcengineering/core"
 import type { TaskType } from "@hcengineering/task"
 import {
   type Issue as HulyIssue,
@@ -140,12 +141,33 @@ const makeChannel = (overrides?: Partial<Channel>): Channel => {
   return result
 }
 
+const makeSocialIdentity = (overrides?: Partial<SocialIdentity>): SocialIdentity => {
+  const result: SocialIdentity = {
+    _id: "social-1" as Ref<SocialIdentity> & PersonId,
+    _class: contact.class.SocialIdentity,
+    space: "space-1" as Ref<Space>,
+    attachedTo: "person-1" as Ref<Person>,
+    attachedToClass: contact.class.Person,
+    collection: "socialIds",
+    type: SocialIdType.EMAIL,
+    value: "member@example.com",
+    key: "email:member@example.com",
+    modifiedBy: "user-1" as PersonId,
+    modifiedOn: 0,
+    createdBy: "user-1" as PersonId,
+    createdOn: 0,
+    ...overrides
+  }
+  return result
+}
+
 interface MockConfig {
   projects?: Array<HulyProject>
   issues?: Array<HulyIssue>
   statuses?: Array<Status>
   persons?: Array<Person>
   channels?: Array<Channel>
+  socialIdentities?: Array<SocialIdentity>
   statusQueryFails?: boolean
 }
 
@@ -155,6 +177,7 @@ const createTestLayerWithMocks = (config: MockConfig) => {
   const statuses = config.statuses ?? []
   const persons = config.persons ?? []
   const channels = config.channels ?? []
+  const socialIdentities = config.socialIdentities ?? []
 
   const findAllImpl: HulyClientOperations["findAll"] = ((_class: unknown, query: unknown, _options: unknown) => {
     if (String(_class) === String(core.class.Status)) {
@@ -260,6 +283,14 @@ const createTestLayerWithMocks = (config: MockConfig) => {
         }
       }
       return Effect.succeed(undefined)
+    }
+    if (_class === contact.class.SocialIdentity) {
+      const q = query as Record<string, unknown>
+      const found = socialIdentities.find(si =>
+        (q.type === undefined || si.type === q.type)
+        && (q.value === undefined || si.value === q.value)
+      )
+      return Effect.succeed(found)
     }
     return Effect.succeed(undefined)
   }) as HulyClientOperations["findOne"]
@@ -979,6 +1010,74 @@ describe("shared.ts", () => {
         // Should find by exact name match (step 2) after channel person lookup fails
         expect(result).toBeDefined()
         expect(result!._id).toBe("person-2")
+      }))
+
+    it.effect("finds person by SocialIdentity email (workspace member without Channel)", () =>
+      Effect.gen(function*() {
+        const person = makePerson({ _id: "person-ws" as Ref<Person>, name: "Workspace Member" })
+        const identity = makeSocialIdentity({
+          attachedTo: "person-ws" as Ref<Person>,
+          value: "ws-member@example.com"
+        })
+
+        const testLayer = createTestLayerWithMocks({
+          persons: [person],
+          channels: [],
+          socialIdentities: [identity]
+        })
+
+        const client = yield* HulyClient.pipe(Effect.provide(testLayer))
+        const result = yield* findPersonByEmailOrName(client, "ws-member@example.com")
+
+        expect(result).toBeDefined()
+        expect(result!._id).toBe("person-ws")
+      }))
+
+    it.effect("SocialIdentity match takes priority over Channel match", () =>
+      Effect.gen(function*() {
+        const socialPerson = makePerson({ _id: "person-social" as Ref<Person>, name: "Social Person" })
+        const channelPerson = makePerson({ _id: "person-channel" as Ref<Person>, name: "Channel Person" })
+        const identity = makeSocialIdentity({
+          attachedTo: "person-social" as Ref<Person>,
+          value: "shared@example.com"
+        })
+        const channel = makeChannel({
+          attachedTo: "person-channel" as Ref<Doc>,
+          value: "shared@example.com"
+        })
+
+        const testLayer = createTestLayerWithMocks({
+          persons: [socialPerson, channelPerson],
+          channels: [channel],
+          socialIdentities: [identity]
+        })
+
+        const client = yield* HulyClient.pipe(Effect.provide(testLayer))
+        const result = yield* findPersonByEmailOrName(client, "shared@example.com")
+
+        expect(result).toBeDefined()
+        expect(result!._id).toBe("person-social")
+      }))
+
+    it.effect("falls through to Channel when no SocialIdentity match", () =>
+      Effect.gen(function*() {
+        const person = makePerson({ _id: "person-1" as Ref<Person>, name: "Channel Person" })
+        const channel = makeChannel({
+          attachedTo: "person-1" as Ref<Doc>,
+          value: "channel-only@example.com"
+        })
+
+        const testLayer = createTestLayerWithMocks({
+          persons: [person],
+          channels: [channel],
+          socialIdentities: []
+        })
+
+        const client = yield* HulyClient.pipe(Effect.provide(testLayer))
+        const result = yield* findPersonByEmailOrName(client, "channel-only@example.com")
+
+        expect(result).toBeDefined()
+        expect(result!._id).toBe("person-1")
       }))
   })
 })

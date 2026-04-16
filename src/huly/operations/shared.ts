@@ -1,5 +1,6 @@
-import type { Channel, Person } from "@hcengineering/contact"
+import type { Channel, Person, SocialIdentity } from "@hcengineering/contact"
 import type { Class, Doc, DocumentQuery, FindOptions, PersonUuid, Ref, Status, WithLookup } from "@hcengineering/core"
+import { SocialIdType } from "@hcengineering/core"
 import type { ProjectType } from "@hcengineering/task"
 import type { Issue as HulyIssue, Project as HulyProject } from "@hcengineering/tracker"
 import { IssuePriority } from "@hcengineering/tracker"
@@ -315,12 +316,35 @@ const DEFAULT_LIMIT = 50
 
 export const clampLimit = (limit?: number): number => Math.min(limit ?? DEFAULT_LIMIT, MAX_LIMIT)
 
+const findPersonBySocialIdentityEmail = (
+  client: HulyClientOperations,
+  email: string
+): Effect.Effect<Person | undefined, HulyClientError> =>
+  Effect.gen(function*() {
+    const identity = yield* client.findOne<SocialIdentity>(
+      contact.class.SocialIdentity,
+      {
+        type: SocialIdType.EMAIL,
+        value: email
+      }
+    )
+    if (identity === undefined) return undefined
+    return yield* client.findOne<Person>(
+      contact.class.Person,
+      { _id: identity.attachedTo }
+    )
+  })
+
 export const findPersonByEmailOrName = (
   client: HulyClient["Type"],
   emailOrName: string
 ): Effect.Effect<Person | undefined, HulyClientError> =>
   Effect.gen(function*() {
-    // 1. Exact email channel match (email channels only)
+    // 1. SocialIdentity email match (workspace members — primary source)
+    const socialIdentityPerson = yield* findPersonBySocialIdentityEmail(client, emailOrName)
+    if (socialIdentityPerson !== undefined) return socialIdentityPerson
+
+    // 2. Exact email channel match (email channels only)
     const exactChannel = yield* client.findOne<Channel>(
       contact.class.Channel,
       {
@@ -336,14 +360,14 @@ export const findPersonByEmailOrName = (
       if (person !== undefined) return person
     }
 
-    // 2. Exact name match
+    // 3. Exact name match
     const exactPerson = yield* client.findOne<Person>(
       contact.class.Person,
       { name: emailOrName }
     )
     if (exactPerson !== undefined) return exactPerson
 
-    // 3. Substring email channel match via $like (email channels only)
+    // 4. Substring email channel match via $like (email channels only)
     const escaped = escapeLikeWildcards(emailOrName)
     const likeChannel = yield* client.findOne<Channel>(
       contact.class.Channel,
@@ -360,7 +384,7 @@ export const findPersonByEmailOrName = (
       if (person !== undefined) return person
     }
 
-    // 4. Substring name match via $like
+    // 5. Substring name match via $like
     const likePerson = yield* client.findOne<Person>(
       contact.class.Person,
       { name: { $like: `%${escaped}%` } }
