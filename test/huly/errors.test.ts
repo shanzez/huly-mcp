@@ -16,6 +16,7 @@ import {
   FileNotFoundError,
   FileTooLargeError,
   FileUploadError,
+  FunnelNotFoundError,
   HulyAuthError,
   HulyConnectionError,
   type HulyDomainError,
@@ -27,6 +28,7 @@ import {
   InvalidStatusError,
   IssueNotFoundError,
   IssueTemplateNotFoundError,
+  LeadNotFoundError,
   MasterTagNotFoundError,
   MessageNotFoundError,
   MilestoneNotFoundError,
@@ -44,6 +46,7 @@ import {
   TestPlanItemNotFoundError,
   ThreadReplyNotFoundError
 } from "../../src/huly/errors.js"
+import { funnelIdentifier, funnelReference, leadIdentifier } from "../helpers/brands.js"
 
 describe("Huly Errors", () => {
   describe("HulyError", () => {
@@ -733,6 +736,10 @@ describe("Huly Errors", () => {
               return `toolarge:${error.filename}`
             case "InvalidContentTypeError":
               return `contenttype:${error.contentType}`
+            case "FunnelNotFoundError":
+              return `funnel:${error.identifier}`
+            case "LeadNotFoundError":
+              return `lead:${error.identifier}`
           }
         }
 
@@ -790,6 +797,12 @@ describe("Huly Errors", () => {
         expect(
           matchError(new InvalidContentTypeError({ filename: "f.exe", contentType: "application/x-msdownload" }))
         ).toBe("contenttype:application/x-msdownload")
+        expect(matchError(new FunnelNotFoundError({ identifier: funnelReference("SALES") }))).toBe("funnel:SALES")
+        expect(
+          matchError(
+            new LeadNotFoundError({ identifier: leadIdentifier("LEAD-1"), funnel: funnelIdentifier("funnel-1") })
+          )
+        ).toBe("lead:LEAD-1")
       }))
   })
 })

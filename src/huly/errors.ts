@@ -41,6 +41,7 @@ import {
   InvalidFileDataError
 } from "./errors-files.js"
 import { TagCategoryNotFoundError, TagNotFoundError } from "./errors-labels.js"
+import { FunnelNotFoundError, LeadNotFoundError } from "./errors-leads.js"
 import {
   ActivityMessageNotFoundError,
   ChannelNotFoundError,
@@ -90,6 +91,7 @@ export {
   FileNotFoundError,
   FileTooLargeError,
   FileUploadError,
+  FunnelNotFoundError,
   HulyAuthError,
   HulyConnectionError,
   HulyError,
@@ -99,6 +101,7 @@ export {
   InvalidStatusError,
   IssueNotFoundError,
   IssueTemplateNotFoundError,
+  LeadNotFoundError,
   MasterTagNotFoundError,
   MessageNotFoundError,
   MilestoneNotFoundError,
@@ -174,6 +177,8 @@ export type HulyDomainError =
   | NotificationNotFoundError
   | NotificationContextNotFoundError
   | InvalidPersonUuidError
+  | FunnelNotFoundError
+  | LeadNotFoundError
   | FileTooLargeError
   | InvalidContentTypeError
 
@@ -229,6 +234,8 @@ export const HulyDomainError: Schema.Union<
     typeof NotificationNotFoundError,
     typeof NotificationContextNotFoundError,
     typeof InvalidPersonUuidError,
+    typeof FunnelNotFoundError,
+    typeof LeadNotFoundError,
     typeof FileTooLargeError,
     typeof InvalidContentTypeError
   ]
@@ -280,6 +287,8 @@ export const HulyDomainError: Schema.Union<
   NotificationNotFoundError,
   NotificationContextNotFoundError,
   InvalidPersonUuidError,
+  FunnelNotFoundError,
+  LeadNotFoundError,
   FileTooLargeError,
   InvalidContentTypeError
 )

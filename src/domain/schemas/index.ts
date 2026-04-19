@@ -1095,3 +1095,30 @@ export {
   UpdateTestRunParamsSchema,
   type UpdateTestRunResult
 } from "./test-management-plans.js"
+
+export {
+  FunnelIdentifier,
+  FunnelReference,
+  type FunnelSummary,
+  FunnelSummarySchema,
+  type GetLeadParams,
+  getLeadParamsJsonSchema,
+  GetLeadParamsSchema,
+  type LeadDetail,
+  LeadDetailSchema,
+  LeadIdentifier,
+  type LeadSummary,
+  LeadSummarySchema,
+  type ListFunnelsParams,
+  listFunnelsParamsJsonSchema,
+  ListFunnelsParamsSchema,
+  type ListFunnelsResult,
+  type ListLeadsParams,
+  listLeadsParamsJsonSchema,
+  ListLeadsParamsSchema,
+  parseGetLeadParams,
+  parseLeadDetail,
+  parseLeadSummary,
+  parseListFunnelsParams,
+  parseListLeadsParams
+} from "./leads.js"
